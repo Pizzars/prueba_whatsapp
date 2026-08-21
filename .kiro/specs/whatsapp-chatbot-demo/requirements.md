@@ -1,81 +1,100 @@
 # Requisitos - Demo WhatsApp Chatbot de Apuestas
 
 ## Descripción General
-Demo de un chatbot de WhatsApp que gestiona ventas/apuestas deportivas. Los usuarios inician sesión desde una plataforma web (login dinámico generado desde WhatsApp), y luego interactúan con el chatbot para realizar apuestas en sorteos ficticios. Los datos se almacenan en DynamoDB y se acceden a través de AWS AppSync (GraphQL). La app se despliega en AWS Amplify.
+Demo de una plataforma de apuestas con dos interfaces: una aplicación web y un chatbot de WhatsApp. Ambas interfaces consumen los mismos servicios de backend. La plataforma web es el sistema principal; WhatsApp actúa como un segundo cliente que reutiliza los servicios existentes a través de una capa de adaptación conversacional.
+
+Los datos se almacenan en DynamoDB y se acceden a través de AWS AppSync (GraphQL). La app se despliega en AWS Amplify.
 
 ---
 
 ## Requisitos Funcionales
 
-### RF-01: Login con Ubicación
-- La app web debe tener una pantalla de login que solicite la ubicación del usuario (latitud/longitud) vía Geolocation API del navegador.
-- La URL del login será dinámica, generada desde WhatsApp con un parámetro de sesión (e.g., `/login?session=abc123`).
-- El parámetro `session` en la URL vincula la sesión web con el chat de WhatsApp.
+### RF-01: Login con Documento y Ubicación
+- La app web debe tener una pantalla de login donde el usuario ingresa su número de documento (10 dígitos).
+- Se solicita la ubicación del usuario (latitud/longitud) vía Geolocation API del navegador.
+- Los usuarios son hardcoded (4 usuarios predefinidos en el código).
+- No hay contraseña — solo el documento como credencial.
+- Al hacer login:
+  1. Se valida que el documento exista en la lista de usuarios.
+  2. Se solicita ubicación.
+  3. Se crea una sesión invocando el servicio de sesiones.
+- La URL del login puede ser directa (`/login`) o dinámica con sesión de WhatsApp (`/login?session=abc123`).
 
-### RF-02: Gestión de Sesión (Dual: Frontend + API)
-- La sesión se maneja tanto desde el frontend como desde las API Routes de Next.js.
-- **Desde el frontend**: Al iniciar sesión se guarda el estado de sesión en el contexto de la app (React state/localStorage) para uso interno de la plataforma web.
-- **Desde la API**: Se exponen endpoints que permiten crear y validar sesiones para uso desde WhatsApp y otras integraciones externas.
-- Al iniciar sesión, se invoca un endpoint API que guarda en DynamoDB (vía AppSync):
+### RF-02: Gestión de Sesión
+- Al iniciar sesión exitosamente, se crea una sesión en DynamoDB (vía AppSync) con:
   - Token de autenticación (generado con `crypto.randomUUID()`)
+  - Documento del usuario
+  - Nombre del usuario
   - Ubicación (latitud y longitud)
-  - Fecha y hora de inicio de sesión
-  - Vencimiento de sesión (configurable, e.g., 24 horas)
-  - ID de sesión de WhatsApp (parámetro `session` de la URL)
-- La sesión queda asociada al chat de WhatsApp mediante el `sessionId`.
-- Ambos contextos (web y WhatsApp) usan la misma sesión en DynamoDB como fuente de verdad.
+  - Fecha y hora de inicio
+  - Vencimiento (24 horas)
+  - SessionId (si viene de WhatsApp)
+  - Estado activo
+- El frontend guarda el token en localStorage para requests posteriores.
+- Cada servicio de la plataforma valida la sesión antes de operar (excepto el login).
 
-### RF-03: Pantalla Post-Login para WhatsApp
-- Después del login exitoso (cuando viene desde WhatsApp), mostrar una pantalla indicando:
-  - "Sesión iniciada correctamente"
-  - "Puedes regresar al chat de WhatsApp"
-  - Botón/enlace para volver a WhatsApp (deep link: `https://wa.me/`)
-
-### RF-04: Catálogo de Juegos
-- Los juegos se consultan vía AppSync GraphQL (query `listGames`).
-- Datos almacenados en DynamoDB tabla `Game_prueba_whatsapp`.
-- Crear 2 juegos ficticios de apuestas como datos iniciales (seed).
+### RF-03: Catálogo de Juegos
+- Los juegos se consultan vía un servicio (API Route → AppSync `listGames`).
+- 2 juegos ficticios precargados como seed.
 - Cada juego tiene: ID, nombre, descripción e ícono.
 
-### RF-05: Sorteos Ficticios
+### RF-04: Sorteos Ficticios
 - Los sorteos se generan dinámicamente basados en la hora actual.
 - Cada sorteo tiene: ID, nombre, fecha, hora de juego.
-- Se juegan cada hora (sorteos del día actual).
-- La generación de sorteos es determinística basada en la fecha/hora.
+- Se juegan cada hora (sorteos del día actual, de 8:00 a 22:00).
 - No se almacenan en base de datos — se generan en tiempo real.
+- El servicio de sorteos requiere sesión válida.
 
-### RF-06: Realizar Apuestas (Flujo Secuencial)
+### RF-05: Realizar Apuestas (Flujo Secuencial)
 - El flujo de apuesta es secuencial y progresivo:
-  1. El usuario entra a un juego y ve los sorteos disponibles del día.
-  2. Selecciona un sorteo → se habilita el input para ingresar un número de 4 cifras.
-  3. Completa el número de 4 cifras → se habilita el input del valor a apostar.
-  4. El valor de la apuesta es entre $500 y $2,000 (formato de moneda con separadores de miles).
-  5. Opción de "Pagar" que siempre será exitosa (plataforma de pruebas).
-- Las apuestas se guardan vía AppSync (mutation `createBet`) en DynamoDB.
-- Los montos se muestran siempre con formato de dinero (e.g., $1.000, $2.000).
+  1. El usuario selecciona un juego.
+  2. Ve los sorteos disponibles del día.
+  3. Selecciona un sorteo → se habilita input para número de 4 cifras.
+  4. Completa el número → se habilita input del valor a apostar ($500 - $2.000).
+  5. Click en "Pagar" → siempre exitoso (plataforma de pruebas).
+- El servicio de apuestas valida sesión, número y monto antes de registrar.
+- Las apuestas se guardan vía AppSync (`createBet`).
 
-### RF-07: Historial de Apuestas en Plataforma Web
-- Cuando el usuario ingresa desde la plataforma web, puede ver:
-  - Listado de juegos disponibles.
-  - Historial de apuestas realizadas (desde web y WhatsApp), consultado vía AppSync `listBets` con filtro por sessionId.
+### RF-06: Historial de Apuestas
+- El usuario puede ver todas sus apuestas realizadas (web y WhatsApp).
+- Se consultan vía servicio (API Route → AppSync `listBets` filtrado por sessionId).
+- Requiere sesión válida.
 
-### RF-08: Webhook de WhatsApp (API Route)
-- API Route de Next.js como webhook para recibir mensajes de WhatsApp API.
-- Verificación de webhook (GET) para validación de Meta.
-- Procesamiento de mensajes entrantes (POST).
-- Verificación de sesión activa en cada solicitud de servicio.
+### RF-07: Servicios Reutilizables (API Routes)
+- Todos los servicios de la plataforma son API Routes de Next.js independientes.
+- Cada servicio (excepto login) valida la sesión del usuario.
+- Los servicios son:
+  - `POST /api/auth/login` — Login (crea sesión)
+  - `GET /api/sessions/validate` — Validar sesión
+  - `GET /api/games` — Listar juegos
+  - `GET /api/draws` — Listar sorteos (paginado)
+  - `POST /api/bets` — Crear apuesta
+  - `GET /api/bets` — Historial de apuestas
+- Estos mismos servicios se reutilizan desde WhatsApp.
 
-### RF-09: Servicios para WhatsApp
-- Endpoint para obtener listado paginado de sorteos (10 por página).
-- Endpoint para registrar una apuesta desde WhatsApp.
-- Menú de opciones interactivo en el chatbot después del login.
-- Validación de sesión vigente en cada interacción.
+### RF-08: Pantalla Post-Login para WhatsApp
+- Cuando el login viene desde WhatsApp (`/login?session=abc123`), después del login exitoso:
+  - Mostrar "Sesión iniciada correctamente"
+  - Mostrar "Puedes regresar al chat de WhatsApp"
+  - Botón/deep link para volver a WhatsApp (`https://wa.me/`)
 
-### RF-10: Comunicación WhatsApp → API Routes
-- WhatsApp se comunica directamente con las API Routes de Next.js vía webhooks.
-- Las API Routes procesan los mensajes y responden con mensajes de WhatsApp.
-- Las API Routes consultan/escriben datos a través de AppSync GraphQL.
-- Se usa la API de WhatsApp Business (Cloud API de Meta) para enviar mensajes.
+### RF-09: WhatsApp como Segundo Cliente
+- WhatsApp se integra vía webhook (API Route).
+- El flujo de sesión:
+  1. Usuario contacta al bot.
+  2. Bot genera URL de login con sessionId único.
+  3. Usuario abre URL → hace login en la web → sesión se asocia al sessionId.
+  4. Usuario vuelve a WhatsApp → bot detecta sesión activa.
+- Una vez con sesión activa, el bot ofrece menú y consume los **mismos servicios** de la plataforma:
+  - Ver juegos → llama al servicio de juegos
+  - Hacer apuesta → llama al servicio de apuestas
+  - Ver mis apuestas → llama al servicio de historial
+- WhatsApp no tiene lógica de negocio propia — es una capa de adaptación que traduce mensajes a llamadas de servicios existentes.
+
+### RF-10: Comunicación WhatsApp
+- WhatsApp se comunica con el webhook (API Route de Next.js).
+- El webhook interpreta el mensaje, determina la intención y llama al servicio correspondiente.
+- Se usa la API de WhatsApp Business (Cloud API de Meta) para enviar respuestas.
 
 ---
 
@@ -84,54 +103,56 @@ Demo de un chatbot de WhatsApp que gestiona ventas/apuestas deportivas. Los usua
 ### RNF-01: Stack Tecnológico
 - Frontend + Backend: Next.js (App Router) con React
 - API: Next.js API Route Handlers (`app/api/`)
-- Capa de datos: AWS AppSync (GraphQL API)
-- Base de datos: Amazon DynamoDB (accedida exclusivamente vía AppSync)
+- Capa de datos: AWS AppSync (GraphQL)
+- Base de datos: Amazon DynamoDB (accedida vía AppSync)
 - Hosting/Deploy: AWS Amplify
 - Cliente GraphQL: aws-amplify (SDK)
 - API externa: WhatsApp Business Cloud API (Meta)
 
 ### RNF-02: Seguridad
-- Las sesiones deben tener expiración configurable.
-- Cada interacción desde WhatsApp debe validar sesión activa.
-- El webhook debe validar la firma de Meta para autenticidad.
-- AppSync se autentica con API Key (suficiente para demo/pruebas).
+- Las sesiones expiran en 24 horas.
+- Cada servicio valida sesión activa antes de operar.
+- El webhook valida la firma de Meta para autenticidad.
+- AppSync se autentica con API Key (suficiente para demo).
 
-### RNF-03: Configuración de WhatsApp API
-- Se requiere configurar variables de entorno en el proyecto (`.env.local` / Amplify Environment Variables):
-  - `WHATSAPP_TOKEN`: Token de acceso permanente de la API.
-  - `WHATSAPP_VERIFY_TOKEN`: Token de verificación del webhook.
-  - `WHATSAPP_PHONE_NUMBER_ID`: ID del número de teléfono de WhatsApp Business.
+### RNF-03: Variables de Entorno
+```
+# AppSync
+APPSYNC_ENDPOINT=https://xxx.appsync-api.us-east-1.amazonaws.com/graphql
+APPSYNC_API_KEY=da2-xxxxxxxxxxxxxxxxxx
+AWS_REGION=us-east-1
 
-### RNF-04: Configuración AWS AppSync
-- Se requiere configurar variables de entorno:
-  - `APPSYNC_ENDPOINT`: URL del endpoint GraphQL de AppSync.
-  - `APPSYNC_API_KEY`: API Key de AppSync para autenticación.
-  - `AWS_REGION`: Región de AWS (e.g., `us-east-1`).
-- En producción (Amplify), estas variables se configuran en la consola de Amplify.
-- En desarrollo local, se usan desde `.env.local`.
+# WhatsApp
+WHATSAPP_TOKEN=
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+
+# App
+NEXT_PUBLIC_APP_URL=https://tu-app.amplifyapp.com
+```
 
 ---
 
 ## Estructura de Datos (DynamoDB vía AppSync)
 
-### Tabla: `Session_prueba_whatsapp`
-- **Partition Key**: `id` (String)
+### Tabla: `Session_prueba_whatsapp` (PK: `id`)
 ```
 {
-  id: string,                // ID interno (auto-generado)
-  sessionId: string,         // ID de la URL (parámetro session)
-  token: string,             // Token de autenticación generado
+  id: string,
+  sessionId: string,         // ID para vincular con WhatsApp (puede ser el mismo que id)
+  token: string,             // Token de autenticación
+  documento: string,         // Documento del usuario
+  nombre: string,            // Nombre del usuario
   latitude: float,
   longitude: float,
-  createdAt: string,         // ISO 8601 (AWSDateTime)
-  expiresAt: string,         // ISO 8601 (AWSDateTime)
-  phoneNumber: string,       // Número de WhatsApp (opcional)
+  createdAt: AWSDateTime,
+  expiresAt: AWSDateTime,
+  phoneNumber: string,       // Número de WhatsApp (se asocia después)
   active: boolean
 }
 ```
 
-### Tabla: `Game_prueba_whatsapp`
-- **Partition Key**: `id` (String)
+### Tabla: `Game_prueba_whatsapp` (PK: `id`)
 ```
 {
   id: string,
@@ -141,8 +162,7 @@ Demo de un chatbot de WhatsApp que gestiona ventas/apuestas deportivas. Los usua
 }
 ```
 
-### Tabla: `Bet_prueba_whatsapp`
-- **Partition Key**: `id` (String)
+### Tabla: `Bet_prueba_whatsapp` (PK: `id`)
 ```
 {
   id: string,
@@ -152,40 +172,46 @@ Demo de un chatbot de WhatsApp que gestiona ventas/apuestas deportivas. Los usua
   drawName: string,
   number: string,           // 4 dígitos
   amount: float,
-  paidAt: string,           // ISO 8601 (AWSDateTime)
+  paidAt: AWSDateTime,
   source: string,           // "web" | "whatsapp"
-  createdAt: string         // ISO 8601 (AWSDateTime)
+  createdAt: AWSDateTime
 }
 ```
 
-### Tabla: `Conversation_prueba_whatsapp`
-- **Partition Key**: `id` (String)
+### Tabla: `Conversation_prueba_whatsapp` (PK: `id`)
 ```
 {
   id: string,
   phoneNumber: string,
   sessionId: string,
-  state: string,            // idle, selecting_game, selecting_draw, entering_number, entering_amount, confirming
+  state: string,
   selectedGame: string,
   selectedDraw: string,
   betNumber: string,
   betAmount: float,
   currentPage: int,
-  updatedAt: string         // ISO 8601 (AWSDateTime)
+  updatedAt: AWSDateTime
 }
 ```
 
 ---
 
-## Flujo Principal
+## Flujo Principal (Web)
 
-1. Usuario contacta al bot de WhatsApp.
-2. Bot envía menú de opciones (incluye "Iniciar sesión").
-3. Bot genera URL dinámica con sessionId único y la envía al usuario.
-4. Usuario abre URL en navegador → se muestra pantalla de login.
-5. Login solicita permisos de ubicación → usuario acepta.
-6. Se llama a la API Route `POST /api/sessions` → crea sesión en DynamoDB vía AppSync.
-7. Se muestra pantalla de confirmación con opción de volver a WhatsApp.
-8. Usuario regresa a WhatsApp → bot detecta sesión activa.
-9. Bot muestra menú: Ver juegos, Hacer apuesta, Ver mis apuestas.
-10. Usuario selecciona opción y el bot gestiona la interacción.
+1. Usuario abre la plataforma → ve pantalla de login.
+2. Ingresa su documento (10 dígitos) → se valida contra lista hardcoded.
+3. Se solicita ubicación → se crea sesión → se guarda token.
+4. Usuario ve el dashboard con juegos disponibles.
+5. Selecciona un juego → ve sorteos del día.
+6. Selecciona sorteo → ingresa número → ingresa monto → paga.
+7. Ve confirmación y puede consultar su historial.
+
+## Flujo Principal (WhatsApp)
+
+1. Usuario contacta al bot.
+2. Bot envía URL de login con sessionId.
+3. Usuario abre URL → hace login (mismo flujo web).
+4. El servicio de login asocia la sesión al sessionId de WhatsApp.
+5. Usuario vuelve a WhatsApp → bot detecta sesión activa.
+6. Bot ofrece menú → usuario interactúa → bot llama servicios existentes.
+7. Respuestas se formatean como mensajes de WhatsApp.

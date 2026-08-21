@@ -1,169 +1,159 @@
 # Tareas de Implementación - Demo WhatsApp Chatbot de Apuestas
 
-## Fase 1: Configuración Base ✅ (Completado)
+## Fase 0: Infraestructura ✅ (Completado)
 
-### Tarea 1.1: Configurar AppSync y Amplify
-- [x] Instalar `aws-amplify`.
-- [x] Crear `aws-exports.js` con configuración de AppSync (endpoint, apiKey, region).
-- [x] Crear `app/lib/amplify-server.ts` con configuración de Amplify y cliente GraphQL.
-- [x] Crear `.env.local` con variables de entorno.
-- [x] Crear `.env.example` para documentación.
-
-### Tarea 1.2: Schema GraphQL y Resolvers
-- [x] Crear `schema.graphql` con los 4 tipos, inputs, queries, mutations y subscriptions.
-- [x] Crear resolvers JS en `scripts/resolvers/` (getItem, listItems, createItem, updateItem, deleteItem).
-- [x] Desplegar resolvers en AppSync vía CLI (`scripts/deploy-resolvers.sh`).
-
-### Tarea 1.3: Infraestructura DynamoDB
-- [x] Crear 4 tablas DynamoDB (`*_prueba_whatsapp`) con PK `id`.
-- [x] Crear 4 Data Sources en AppSync conectados a las tablas.
-- [x] Crear script de seed (`scripts/seed-games.sh`) para juegos iniciales.
-
-### Tarea 1.4: Queries y Mutations en el proyecto
-- [x] Crear `app/lib/graphql/queries.ts` con todos los queries tipados.
-- [x] Crear `app/lib/graphql/mutations.ts` con todas las mutations tipadas.
-
-### Tarea 1.5: Documentación
-- [x] Crear `docs/setup-appsync-cli.md` con guía completa de setup.
+### Tarea 0.1: AppSync + DynamoDB
+- [x] Crear 4 tablas DynamoDB (`*_prueba_whatsapp`).
+- [x] Crear API GraphQL en AppSync con schema.
+- [x] Crear Data Sources y Resolvers.
+- [x] Configurar `aws-amplify` y cliente GraphQL.
+- [x] Crear queries/mutations en `app/lib/graphql/`.
+- [x] Seed de juegos.
+- [x] Documentación en `docs/`.
 
 ---
 
-## Fase 2: Sistema de Sesiones
+## Fase 1: Plataforma Web — Servicios y Login
 
-### Tarea 2.1: API Route - Crear Sesión
-- [ ] Crear `app/api/sessions/route.ts` con handler POST.
-- [ ] Recibir `{ sessionId, location: { latitude, longitude } }`.
-- [ ] Generar token (`crypto.randomUUID()`), calcular expiración (24h).
-- [ ] Llamar a AppSync mutation `createSession` para guardar en DynamoDB.
-- [ ] Retornar `{ success: true, token, expiresAt, sessionId }`.
+### Tarea 1.1: Usuarios hardcoded
+- [ ] Crear `app/lib/users.ts` con lista de 4 usuarios (documento + nombre).
+- [ ] Exportar función `findUserByDocumento()`.
 
-### Tarea 2.2: API Route - Validar Sesión
-- [ ] En el mismo `app/api/sessions/route.ts`, agregar handler GET.
-- [ ] Recibir query param `sessionId`.
-- [ ] Llamar a AppSync query `listSessions` con filtro `sessionId.eq`.
-- [ ] Verificar activa y no expirada.
-- [ ] Retornar `{ valid: true, session }` o `{ valid: false, reason }`.
+### Tarea 1.2: Lógica de sesiones
+- [ ] Crear `app/lib/sessions.ts` con funciones:
+  - `createNewSession(data)` → crea sesión en AppSync, retorna token.
+  - `validateSession(token)` → busca sesión, verifica activa y no expirada.
+  - `getSessionBySessionId(sessionId)` → busca por sessionId (para WhatsApp).
+- [ ] Estas funciones son la base que usan TODOS los servicios.
 
-### Tarea 2.3: Lógica compartida de sesiones
-- [ ] Crear `app/lib/sessions.ts` con funciones reutilizables: `createSession()`, `validateSession()`, `getSessionBySessionId()`.
-- [ ] Estas funciones usan el cliente AppSync internamente.
-- [ ] Son usadas tanto por las API Routes como por el messageHandler de WhatsApp.
+### Tarea 1.3: API Route — Login
+- [ ] Crear `app/api/auth/login/route.ts` (POST).
+- [ ] Recibir `{ documento, latitude, longitude, sessionId? }`.
+- [ ] Validar documento contra usuarios hardcoded.
+- [ ] Crear sesión vía `createNewSession()`.
+- [ ] Retornar token, datos de usuario, expiración.
 
-### Tarea 2.4: Pantalla de Login (Frontend)
-- [ ] Crear `app/login/page.tsx` como Client Component.
-- [ ] Leer parámetro `session` de la URL (useSearchParams).
-- [ ] Solicitar permiso de geolocalización al usuario.
-- [ ] Mostrar botón de "Iniciar Sesión" que llama a `POST /api/sessions`.
-- [ ] Redirigir a `/login/success` tras éxito.
+### Tarea 1.4: API Route — Validar Sesión
+- [ ] Crear `app/api/sessions/validate/route.ts` (GET).
+- [ ] Leer token del header `Authorization: Bearer <token>`.
+- [ ] Validar con `validateSession(token)`.
+- [ ] Retornar estado de la sesión.
 
-### Tarea 2.5: Pantalla Post-Login (Frontend)
+### Tarea 1.5: Pantalla de Login (Frontend)
+- [ ] Crear `app/login/page.tsx` (Client Component).
+- [ ] Input para documento (10 dígitos, validación visual).
+- [ ] Botón "Iniciar Sesión" → solicita ubicación → llama `POST /api/auth/login`.
+- [ ] Leer param `session` de URL (si viene de WhatsApp).
+- [ ] Si login exitoso: guardar token en localStorage.
+- [ ] Si tiene `session` param → redirigir a `/login/success`.
+- [ ] Si no tiene `session` param → redirigir a `/` (dashboard).
+
+### Tarea 1.6: Pantalla Post-Login WhatsApp
 - [ ] Crear `app/login/success/page.tsx`.
-- [ ] Mostrar mensaje de confirmación: "Sesión iniciada correctamente".
-- [ ] Mostrar indicación de "Puedes volver a WhatsApp".
-- [ ] Incluir deep link a WhatsApp (`https://wa.me/`).
+- [ ] Mostrar "Sesión iniciada correctamente".
+- [ ] Mostrar "Puedes volver a WhatsApp".
+- [ ] Deep link a WhatsApp (`https://wa.me/`).
 
 ---
 
-## Fase 3: Plataforma de Apuestas (Frontend)
+## Fase 2: Plataforma Web — Juegos y Apuestas
 
-### Tarea 3.1: Generador de Sorteos
-- [ ] Crear `app/lib/draws.ts` con función que genera sorteos ficticios del día.
-- [ ] Sorteos cada hora de 8:00 a 22:00 (15 sorteos por día).
-- [ ] Cada sorteo: ID determinístico (fecha+hora hash), nombre, fecha, hora.
-- [ ] Exportar función reutilizable para frontend y API.
+### Tarea 2.1: Utilidades compartidas
+- [ ] Crear `app/lib/draws.ts` — genera sorteos ficticios (8:00-22:00, ID determinístico).
+- [ ] Crear `app/lib/formatCurrency.ts` — formato COP sin decimales.
 
-### Tarea 3.2: Utilidad de formato de moneda
-- [ ] Crear `app/lib/formatCurrency.ts`.
-- [ ] Usar `Intl.NumberFormat('es-CO', ...)` para formato COP sin decimales.
-- [ ] Exportar para uso en componentes y API responses.
-
-### Tarea 3.3: Dashboard Principal
-- [ ] Actualizar `app/page.tsx` como dashboard.
-- [ ] Mostrar catálogo de 2 juegos obtenidos de `/api/games`.
-- [ ] Permitir seleccionar un juego para ver sorteos.
-- [ ] Mostrar historial de apuestas realizadas.
-
-### Tarea 3.4: Componentes de Juego (Flujo Secuencial)
-- [ ] Crear `app/components/GameCard.tsx` - Tarjeta visual del juego.
-- [ ] Crear `app/components/DrawList.tsx` - Lista de sorteos del día para el juego seleccionado.
-- [ ] Crear `app/components/BetForm.tsx` - Formulario con flujo secuencial:
-  - Al seleccionar un sorteo → se habilita input de número de 4 cifras.
-  - Al completar 4 cifras → se habilita input de valor de apuesta ($500 - $2.000).
-  - Usar formato de moneda (separadores de miles) en todos los campos de dinero.
-  - Botón "Pagar" habilitado solo cuando todos los campos están completos.
-- [ ] Crear `app/components/BetHistory.tsx` - Tabla/lista de apuestas realizadas con montos en formato moneda.
-
-### Tarea 3.5: API Routes de Apuestas y Juegos
+### Tarea 2.2: API Routes de Servicios
+- [ ] Crear `app/api/games/route.ts` (GET):
+  - Validar sesión.
+  - Consultar `listGames` en AppSync.
+  - Retornar juegos.
+- [ ] Crear `app/api/draws/route.ts` (GET):
+  - Validar sesión.
+  - Generar sorteos del día.
+  - Paginar (10 por página, params `page` y `gameId`).
 - [ ] Crear `app/api/bets/route.ts`:
-  - POST: valida sesión (vía AppSync), valida datos, llama mutation `createBet`.
-  - GET: valida sesión, llama query `listBets` con filtro por sessionId.
-- [ ] Crear `app/api/games/route.ts`:
-  - GET: llama query `listGames` de AppSync.
-- [ ] Crear `app/api/draws/route.ts`:
-  - GET: genera sorteos del día en memoria, pagina en bloques de 10, valida sesión.
+  - POST: Validar sesión → validar número (4 dígitos) → validar monto (500-2000) → `createBet` en AppSync.
+  - GET: Validar sesión → `listBets` filtrado por sessionId del token.
+
+### Tarea 2.3: Dashboard (Frontend)
+- [ ] Actualizar `app/page.tsx`:
+  - Si no hay token en localStorage → redirigir a `/login`.
+  - Si hay token → validar sesión con `/api/sessions/validate`.
+  - Mostrar nombre del usuario logueado.
+  - Mostrar catálogo de juegos (fetch a `/api/games`).
+  - Permitir seleccionar un juego.
+
+### Tarea 2.4: Componentes de Apuesta
+- [ ] Crear `app/components/GameCard.tsx` — Tarjeta visual del juego (nombre, ícono, descripción).
+- [ ] Crear `app/components/DrawList.tsx` — Lista de sorteos del juego seleccionado.
+- [ ] Crear `app/components/BetForm.tsx` — Flujo secuencial:
+  - Seleccionar sorteo → habilita input número.
+  - Completar 4 cifras → habilita input monto.
+  - Monto válido → habilita botón "Pagar".
+  - Click "Pagar" → POST `/api/bets` → muestra confirmación.
+- [ ] Crear `app/components/BetHistory.tsx` — Lista de apuestas (monto formateado, source, fecha).
+
+### Tarea 2.5: Integración completa del Dashboard
+- [ ] Conectar GameCard → al click muestra DrawList.
+- [ ] Conectar DrawList + BetForm → flujo de apuesta.
+- [ ] Agregar sección de historial con BetHistory.
+- [ ] Verificar flujo completo: login → seleccionar juego → apostar → ver historial.
 
 ---
 
-## Fase 4: WhatsApp Integration
+## Fase 3: WhatsApp — Adaptador sobre servicios existentes
 
-### Tarea 4.1: Webhook de WhatsApp
+### Tarea 3.1: Webhook de WhatsApp
 - [ ] Crear `app/api/whatsapp/webhook/route.ts`.
-- [ ] GET: Verificación de webhook (validar `hub.verify_token`, responder con `hub.challenge`).
-- [ ] POST: Recibir mensajes, extraer datos del mensaje y número de teléfono.
-- [ ] Delegar procesamiento al messageHandler.
+- [ ] GET: Verificación (validar `hub.verify_token`, responder `hub.challenge`).
+- [ ] POST: Parsear mensaje, extraer phoneNumber y texto, delegar a messageHandler.
 
-### Tarea 4.2: Envío de Mensajes
+### Tarea 3.2: Envío de Mensajes
 - [ ] Crear `app/lib/whatsapp/sendMessage.ts`.
-- [ ] Función para enviar mensajes de texto vía WhatsApp Cloud API.
-- [ ] Función para enviar mensajes con botones/listas interactivas.
-- [ ] Configurar headers con token de autenticación de Meta.
+- [ ] Función `sendText(phoneNumber, message)` → WhatsApp Cloud API.
+- [ ] Función `sendInteractive(phoneNumber, body, buttons)` → mensajes con opciones.
 
-### Tarea 4.3: Manejador de Mensajes y Estado de Conversación
+### Tarea 3.3: Manejador de Mensajes (Adaptador)
 - [ ] Crear `app/lib/whatsapp/messageHandler.ts`.
-- [ ] Crear/actualizar estado de conversación vía AppSync (mutations `createConversation`/`updateConversation`).
-- [ ] Implementar flujo de menú principal (opciones 1-4).
-- [ ] Implementar flujo de "Iniciar sesión": generar URL dinámica con sessionId, enviarla al usuario.
-- [ ] Implementar flujo de "Ver juegos": consultar AppSync `listGames`, listar juegos disponibles.
-- [ ] Implementar flujo de "Hacer apuesta": guiar paso a paso (juego → sorteo → número → monto → pagar), guardar vía `createBet`.
-- [ ] Implementar flujo de "Ver mis apuestas": consultar AppSync `listBets` con filtro por sessionId.
-- [ ] Validar sesión activa en cada interacción de servicio.
+- [ ] Gestionar estado de conversación en AppSync (`Conversation_prueba_whatsapp`).
+- [ ] Estados: `idle`, `awaiting_login`, `selecting_game`, `selecting_draw`, `entering_number`, `entering_amount`.
+- [ ] Implementar flujos:
+  - **Sin sesión**: Enviar URL de login (`${APP_URL}/login?session=${sessionId}`).
+  - **Con sesión** → Menú principal:
+    - "1" → Listar juegos (llama servicio de juegos).
+    - "2" → Flujo de apuesta (llama servicios de sorteos + apuestas).
+    - "3" → Ver apuestas (llama servicio de historial).
+- [ ] **Importante**: El messageHandler consume los mismos servicios/funciones que las API Routes, NO reimplementa lógica.
 
-### Tarea 4.4: Asociación Sesión-WhatsApp
-- [ ] Al recibir un mensaje desde WhatsApp con sessionId, asociar el número de teléfono a la sesión vía `updateSession`.
-- [ ] Cuando el usuario vuelve al chat después del login, el bot detecta la sesión activa por número de teléfono (query `listSessions` con filtro `phoneNumber`).
-- [ ] Actualizar la lógica de `createSession` para que también busque conversaciones pendientes y las vincule.
+### Tarea 3.4: Asociación Sesión ↔ WhatsApp
+- [ ] Cuando usuario hace login desde URL con `sessionId`:
+  - La sesión se crea con ese sessionId.
+- [ ] Cuando bot recibe mensaje post-login:
+  - Busca conversación por phoneNumber → obtiene sessionId → busca sesión → valida activa.
+  - Asocia phoneNumber a la sesión (`updateSession`).
+- [ ] A partir de ahí, el bot usa el token de esa sesión para consumir servicios.
 
 ---
 
-## Fase 5: Deploy y Configuración Final
+## Fase 4: Deploy y Verificación
 
-### Tarea 5.1: Configuración AWS Amplify
-- [ ] Conectar repositorio con AWS Amplify (ya conectado).
-- [ ] Configurar variables de entorno en Amplify Console:
-  - `APPSYNC_ENDPOINT`
-  - `APPSYNC_API_KEY`
-  - `AWS_REGION`
-  - `WHATSAPP_TOKEN`
-  - `WHATSAPP_VERIFY_TOKEN`
-  - `WHATSAPP_PHONE_NUMBER_ID`
-- [ ] Verificar que el build de Next.js funciona en Amplify.
+### Tarea 4.1: Variables de entorno en Amplify
+- [ ] Configurar en Amplify Console:
+  - `APPSYNC_ENDPOINT`, `APPSYNC_API_KEY`, `AWS_REGION`
+  - `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
+  - `NEXT_PUBLIC_APP_URL`
 
-### Tarea 5.2: Verificación y pruebas
-- [ ] Verificar que el build del proyecto compila sin errores (`npm run build`).
-- [ ] Probar flujo completo: login → dashboard → apuesta desde web.
-- [ ] Probar webhook de WhatsApp con herramienta de pruebas de Meta.
-- [ ] Verificar que las API Routes responden correctamente en producción.
-
-### Tarea 5.3: Documentación final
-- [ ] Verificar que `.env.example` está actualizado con todas las variables.
-- [ ] Verificar que `docs/setup-appsync-cli.md` refleja el estado actual.
-- [ ] Documentar configuración de WhatsApp Business API (webhook URL, token, etc.).
+### Tarea 4.2: Verificación
+- [ ] `npm run build` sin errores.
+- [ ] Probar flujo web completo: login → juegos → apuesta → historial.
+- [ ] Probar webhook WhatsApp con herramienta de Meta.
+- [ ] Verificar que WhatsApp usa los mismos servicios que la web.
 
 ---
 
 ## Orden de Ejecución
-1. ~~Fase 1~~ → Configuración base ✅
-2. Fase 2 → Sistema de sesiones (API + frontend login)
-3. Fase 3 → Plataforma de apuestas (frontend + API de apuestas)
-4. Fase 4 → Integración con WhatsApp
-5. Fase 5 → Deploy en Amplify y configuración final
+1. ~~Fase 0~~ → Infraestructura ✅
+2. **Fase 1** → Login + Sesiones (backend + frontend)
+3. **Fase 2** → Juegos + Apuestas (servicios + UI completa)
+4. **Fase 3** → WhatsApp (adaptador sobre servicios existentes)
+5. **Fase 4** → Deploy y verificación
