@@ -1,20 +1,30 @@
 # Tareas de Implementación - Demo WhatsApp Chatbot de Apuestas
 
-## Fase 1: Configuración Base
+## Fase 1: Configuración Base ✅ (Completado)
 
-### Tarea 1.1: Configurar cliente DynamoDB
-- [ ] Instalar dependencias: `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`.
-- [ ] Crear `app/lib/dynamodb.ts` con el cliente DynamoDB Document Client.
-- [ ] Crear archivo `.env.local` con variables de ejemplo para AWS y WhatsApp.
+### Tarea 1.1: Configurar AppSync y Amplify
+- [x] Instalar `aws-amplify`.
+- [x] Crear `aws-exports.js` con configuración de AppSync (endpoint, apiKey, region).
+- [x] Crear `app/lib/amplify-server.ts` con configuración de Amplify y cliente GraphQL.
+- [x] Crear `.env.local` con variables de entorno.
+- [x] Crear `.env.example` para documentación.
 
-### Tarea 1.2: Crear tablas DynamoDB
-- [ ] Crear script `scripts/create-tables.ts` que cree las 4 tablas: `Sessions`, `Games`, `Bets`, `Conversations`.
-- [ ] Definir partition keys y sort keys según el diseño.
-- [ ] Documentar cómo ejecutar el script (`npx tsx scripts/create-tables.ts`).
+### Tarea 1.2: Schema GraphQL y Resolvers
+- [x] Crear `schema.graphql` con los 4 tipos, inputs, queries, mutations y subscriptions.
+- [x] Crear resolvers JS en `scripts/resolvers/` (getItem, listItems, createItem, updateItem, deleteItem).
+- [x] Desplegar resolvers en AppSync vía CLI (`scripts/deploy-resolvers.sh`).
 
-### Tarea 1.3: Seed de datos iniciales
-- [ ] Crear script `scripts/seed.ts` que inserte los 2 juegos ficticios en la tabla `Games`.
-- [ ] Ejecutar el seed para verificar que funciona.
+### Tarea 1.3: Infraestructura DynamoDB
+- [x] Crear 4 tablas DynamoDB (`*_prueba_whatsapp`) con PK `id`.
+- [x] Crear 4 Data Sources en AppSync conectados a las tablas.
+- [x] Crear script de seed (`scripts/seed-games.sh`) para juegos iniciales.
+
+### Tarea 1.4: Queries y Mutations en el proyecto
+- [x] Crear `app/lib/graphql/queries.ts` con todos los queries tipados.
+- [x] Crear `app/lib/graphql/mutations.ts` con todas las mutations tipadas.
+
+### Tarea 1.5: Documentación
+- [x] Crear `docs/setup-appsync-cli.md` con guía completa de setup.
 
 ---
 
@@ -23,18 +33,21 @@
 ### Tarea 2.1: API Route - Crear Sesión
 - [ ] Crear `app/api/sessions/route.ts` con handler POST.
 - [ ] Recibir `{ sessionId, location: { latitude, longitude } }`.
-- [ ] Generar token (crypto.randomUUID), calcular expiración (24h), guardar en DynamoDB tabla `Sessions`.
+- [ ] Generar token (`crypto.randomUUID()`), calcular expiración (24h).
+- [ ] Llamar a AppSync mutation `createSession` para guardar en DynamoDB.
 - [ ] Retornar `{ success: true, token, expiresAt, sessionId }`.
 
 ### Tarea 2.2: API Route - Validar Sesión
 - [ ] En el mismo `app/api/sessions/route.ts`, agregar handler GET.
 - [ ] Recibir query param `sessionId`.
-- [ ] Buscar en DynamoDB, verificar activa y no expirada.
+- [ ] Llamar a AppSync query `listSessions` con filtro `sessionId.eq`.
+- [ ] Verificar activa y no expirada.
 - [ ] Retornar `{ valid: true, session }` o `{ valid: false, reason }`.
 
 ### Tarea 2.3: Lógica compartida de sesiones
-- [ ] Crear `app/lib/sessions.ts` con funciones reutilizables: `createSession()`, `validateSession()`, `getSession()`.
-- [ ] Estas funciones son usadas tanto por las API Routes como internamente por el messageHandler de WhatsApp.
+- [ ] Crear `app/lib/sessions.ts` con funciones reutilizables: `createSession()`, `validateSession()`, `getSessionBySessionId()`.
+- [ ] Estas funciones usan el cliente AppSync internamente.
+- [ ] Son usadas tanto por las API Routes como por el messageHandler de WhatsApp.
 
 ### Tarea 2.4: Pantalla de Login (Frontend)
 - [ ] Crear `app/login/page.tsx` como Client Component.
@@ -66,7 +79,7 @@
 
 ### Tarea 3.3: Dashboard Principal
 - [ ] Actualizar `app/page.tsx` como dashboard.
-- [ ] Mostrar catálogo de 2 juegos (Lotería Nacional, Chance Express) obtenidos de `/api/games`.
+- [ ] Mostrar catálogo de 2 juegos obtenidos de `/api/games`.
 - [ ] Permitir seleccionar un juego para ver sorteos.
 - [ ] Mostrar historial de apuestas realizadas.
 
@@ -82,12 +95,12 @@
 
 ### Tarea 3.5: API Routes de Apuestas y Juegos
 - [ ] Crear `app/api/bets/route.ts`:
-  - POST: valida sesión, valida datos, guarda apuesta en DynamoDB tabla `Bets`.
-  - GET: valida sesión, retorna apuestas del sessionId.
+  - POST: valida sesión (vía AppSync), valida datos, llama mutation `createBet`.
+  - GET: valida sesión, llama query `listBets` con filtro por sessionId.
 - [ ] Crear `app/api/games/route.ts`:
-  - GET: retorna catálogo de juegos desde DynamoDB tabla `Games`.
+  - GET: llama query `listGames` de AppSync.
 - [ ] Crear `app/api/draws/route.ts`:
-  - GET: genera sorteos del día, pagina en bloques de 10, valida sesión.
+  - GET: genera sorteos del día en memoria, pagina en bloques de 10, valida sesión.
 
 ---
 
@@ -107,17 +120,17 @@
 
 ### Tarea 4.3: Manejador de Mensajes y Estado de Conversación
 - [ ] Crear `app/lib/whatsapp/messageHandler.ts`.
-- [ ] Crear/actualizar estado de conversación en DynamoDB (tabla `Conversations`).
+- [ ] Crear/actualizar estado de conversación vía AppSync (mutations `createConversation`/`updateConversation`).
 - [ ] Implementar flujo de menú principal (opciones 1-4).
 - [ ] Implementar flujo de "Iniciar sesión": generar URL dinámica con sessionId, enviarla al usuario.
-- [ ] Implementar flujo de "Ver juegos": listar juegos disponibles.
-- [ ] Implementar flujo de "Hacer apuesta": guiar paso a paso (juego → sorteo → número → monto → pagar).
-- [ ] Implementar flujo de "Ver mis apuestas": mostrar últimas apuestas.
+- [ ] Implementar flujo de "Ver juegos": consultar AppSync `listGames`, listar juegos disponibles.
+- [ ] Implementar flujo de "Hacer apuesta": guiar paso a paso (juego → sorteo → número → monto → pagar), guardar vía `createBet`.
+- [ ] Implementar flujo de "Ver mis apuestas": consultar AppSync `listBets` con filtro por sessionId.
 - [ ] Validar sesión activa en cada interacción de servicio.
 
 ### Tarea 4.4: Asociación Sesión-WhatsApp
-- [ ] Al recibir un mensaje desde WhatsApp con sessionId, asociar el número de teléfono a la sesión en DynamoDB.
-- [ ] Cuando el usuario vuelve al chat después del login, el bot detecta la sesión activa por número de teléfono.
+- [ ] Al recibir un mensaje desde WhatsApp con sessionId, asociar el número de teléfono a la sesión vía `updateSession`.
+- [ ] Cuando el usuario vuelve al chat después del login, el bot detecta la sesión activa por número de teléfono (query `listSessions` con filtro `phoneNumber`).
 - [ ] Actualizar la lógica de `createSession` para que también busque conversaciones pendientes y las vincule.
 
 ---
@@ -125,10 +138,15 @@
 ## Fase 5: Deploy y Configuración Final
 
 ### Tarea 5.1: Configuración AWS Amplify
-- [ ] Conectar repositorio con AWS Amplify.
-- [ ] Configurar variables de entorno en Amplify Console (AWS_REGION, WHATSAPP_TOKEN, etc.).
+- [ ] Conectar repositorio con AWS Amplify (ya conectado).
+- [ ] Configurar variables de entorno en Amplify Console:
+  - `APPSYNC_ENDPOINT`
+  - `APPSYNC_API_KEY`
+  - `AWS_REGION`
+  - `WHATSAPP_TOKEN`
+  - `WHATSAPP_VERIFY_TOKEN`
+  - `WHATSAPP_PHONE_NUMBER_ID`
 - [ ] Verificar que el build de Next.js funciona en Amplify.
-- [ ] Configurar IAM Role con permisos de DynamoDB para el servicio de Amplify.
 
 ### Tarea 5.2: Verificación y pruebas
 - [ ] Verificar que el build del proyecto compila sin errores (`npm run build`).
@@ -136,15 +154,15 @@
 - [ ] Probar webhook de WhatsApp con herramienta de pruebas de Meta.
 - [ ] Verificar que las API Routes responden correctamente en producción.
 
-### Tarea 5.3: Documentación
-- [ ] Documentar variables de entorno necesarias en `.env.example`.
-- [ ] Documentar pasos para crear tablas DynamoDB y seed de datos.
+### Tarea 5.3: Documentación final
+- [ ] Verificar que `.env.example` está actualizado con todas las variables.
+- [ ] Verificar que `docs/setup-appsync-cli.md` refleja el estado actual.
 - [ ] Documentar configuración de WhatsApp Business API (webhook URL, token, etc.).
 
 ---
 
-## Orden de Ejecución Sugerido
-1. Fase 1 → Configuración base (DynamoDB client, tablas, seed)
+## Orden de Ejecución
+1. ~~Fase 1~~ → Configuración base ✅
 2. Fase 2 → Sistema de sesiones (API + frontend login)
 3. Fase 3 → Plataforma de apuestas (frontend + API de apuestas)
 4. Fase 4 → Integración con WhatsApp

@@ -3,10 +3,10 @@
 ## Arquitectura General
 
 ```
-┌─────────────────────────────┐     ┌──────────────┐
-│  Next.js (App Router)       │────▶│   DynamoDB   │
-│  - Pages (React SSR/CSR)    │     │              │
-│  - API Route Handlers       │     └──────────────┘
+┌─────────────────────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Next.js (App Router)       │────▶│   AppSync    │────▶│   DynamoDB   │
+│  - Pages (React SSR/CSR)    │     │  (GraphQL)   │     │  (4 tablas)  │
+│  - API Route Handlers       │     └──────────────┘     └──────────────┘
 │                             │
 │  Deploy: AWS Amplify        │
 └─────────────────────────────┘
@@ -17,6 +17,12 @@
       │  API (Meta)      │
       └─────────────────┘
 ```
+
+### Flujo de datos
+- **Frontend** → llama a API Routes de Next.js (fetch a `/api/...`)
+- **API Routes** → consultan/escriben datos a través de AppSync GraphQL (usando `aws-amplify` SDK)
+- **AppSync** → resuelve queries/mutations con resolvers JS que leen/escriben en DynamoDB
+- **WhatsApp webhook** → llega a API Route → procesa → consulta AppSync → responde vía WhatsApp API
 
 ---
 
@@ -33,9 +39,7 @@ app/
 │       └── page.tsx              # Pantalla post-login (volver a WhatsApp)
 ├── api/
 │   ├── sessions/
-│   │   ├── route.ts             # POST: crear sesión | GET: validar sesión
-│   │   └── [sessionId]/
-│   │       └── route.ts         # GET: obtener sesión específica
+│   │   └── route.ts             # POST: crear sesión | GET: validar sesión
 │   ├── bets/
 │   │   └── route.ts             # POST: crear apuesta | GET: obtener historial
 │   ├── draws/
@@ -51,14 +55,97 @@ app/
 │   ├── BetForm.tsx               # Formulario de apuesta (flujo secuencial)
 │   └── BetHistory.tsx            # Historial de apuestas
 └── lib/
-    ├── dynamodb.ts               # Cliente DynamoDB (AWS SDK v3)
+    ├── amplify-server.ts         # Configuración de Amplify + cliente GraphQL
+    ├── graphql/
+    │   ├── queries.ts            # Queries GraphQL (get*, list*)
+    │   └── mutations.ts          # Mutations GraphQL (create*, update*, delete*)
     ├── sessions.ts               # Lógica de sesiones (crear, validar)
     ├── draws.ts                  # Generador de sorteos ficticios
     ├── whatsapp/
     │   ├── sendMessage.ts        # Enviar mensajes vía WhatsApp API
     │   └── messageHandler.ts     # Procesar mensajes entrantes y estado
     └── formatCurrency.ts         # Utilidad para formato de moneda
+
+aws-exports.js                    # Config de AppSync (endpoint, apiKey, region)
+schema.graphql                    # Schema GraphQL de AppSync
+scripts/
+├── create-tables.sh              # Crear tablas DynamoDB vía AWS CLI
+├── deploy-resolvers.sh           # Desplegar resolvers en AppSync vía AWS CLI
+├── seed-games.sh                 # Insertar juegos de prueba
+└── resolvers/                    # Código JS de los resolvers de AppSync
+    ├── getItem.js
+    ├── listItems.js
+    ├── createItem.js
+    ├── updateItem.js
+    └── deleteItem.js
+docs/
+└── setup-appsync-cli.md          # Guía completa de setup de infraestructura
 ```
+
+---
+
+## Capa de Datos: AppSync GraphQL
+
+### Configuración del cliente (`app/lib/amplify-server.ts`)
+
+```typescript
+import { Amplify } from "aws-amplify";
+import { generateClient } from "aws-amplify/api";
+
+Amplify.configure({
+  API: {
+    GraphQL: {
+      endpoint: process.env.APPSYNC_ENDPOINT,
+      region: process.env.AWS_REGION || "us-east-1",
+      defaultAuthMode: "apiKey",
+      apiKey: process.env.APPSYNC_API_KEY,
+    },
+  },
+});
+
+export const client = generateClient();
+```
+
+### Uso desde API Routes
+
+```typescript
+import { client } from "@/app/lib/amplify-server";
+import { listGames } from "@/app/lib/graphql/queries";
+import { createBet } from "@/app/lib/graphql/mutations";
+
+// Leer
+const result = await client.graphql({ query: listGames });
+
+// Escribir
+const result = await client.graphql({
+  query: createBet,
+  variables: { input: { sessionId, gameId, ... } }
+});
+```
+
+### Schema GraphQL (en AppSync)
+
+Tipos principales:
+- `Session_prueba_whatsapp` — Sesiones de usuario
+- `Game_prueba_whatsapp` — Catálogo de juegos
+- `Bet_prueba_whatsapp` — Apuestas realizadas
+- `Conversation_prueba_whatsapp` — Estado de conversación WhatsApp
+
+Operaciones disponibles:
+- Queries: `getSession`, `listSessions`, `getGame`, `listGames`, `getBet`, `listBets`, `getConversation`, `listConversations`
+- Mutations: `createSession`, `updateSession`, `deleteSession`, `createGame`, `createBet`, `createConversation`, `updateConversation`
+- Subscriptions: `onCreateBet` (por sessionId)
+
+### Resolvers de AppSync
+
+Se usan resolvers JavaScript (runtime APPSYNC_JS 1.0.0):
+- **getItem.js** — GetItem por ID
+- **listItems.js** — Scan con paginación (limit + nextToken)
+- **createItem.js** — PutItem con auto-generación de ID
+- **updateItem.js** — UpdateItem usando `ddb.update()` de `@aws-appsync/utils/dynamodb`
+- **deleteItem.js** — DeleteItem por ID
+
+> Nota: El runtime JS de AppSync no soporta `Object.entries()` ni todas las APIs de ES6. Para updates se usa el helper `ddb.update()` del módulo `@aws-appsync/utils/dynamodb`.
 
 ---
 
@@ -85,15 +172,15 @@ app/
 #### 1. `POST /api/sessions` - Crear Sesión
 - **Input**: `{ sessionId, location: { latitude, longitude } }`
 - **Proceso**:
-  1. Genera token de autenticación (crypto.randomUUID).
+  1. Genera token de autenticación (`crypto.randomUUID()`).
   2. Calcula expiración (createdAt + 24h).
-  3. Guarda item en tabla `Sessions` de DynamoDB.
+  3. Llama a AppSync mutation `createSession`.
 - **Output**: `{ success: true, token, expiresAt, sessionId }`
 
 #### 2. `GET /api/sessions?sessionId=xxx` - Validar Sesión
-- **Input**: Query param `sessionId` o `token`
+- **Input**: Query param `sessionId`
 - **Proceso**:
-  1. Busca sesión en DynamoDB.
+  1. Llama a AppSync query `listSessions` con filtro `sessionId.eq`.
   2. Verifica que esté activa y no haya expirado.
 - **Output**: `{ valid: true, session: {...} }` o `{ valid: false, reason: "expired|not_found" }`
 
@@ -108,48 +195,30 @@ app/
 
 #### 5. `GET /api/draws?page=1&gameId=game1&sessionId=xxx` - Obtener Sorteos
 - **Proceso**:
-  1. Valida sesión activa.
-  2. Genera sorteos del día actual.
+  1. Valida sesión activa (vía AppSync).
+  2. Genera sorteos del día actual (en memoria, no DB).
   3. Pagina en bloques de 10.
 - **Output**: `{ draws: [...], page, totalPages, hasMore }`
 
 #### 6. `POST /api/bets` - Crear Apuesta
 - **Input**: `{ sessionId, gameId, drawId, drawName, number, amount, source }`
 - **Proceso**:
-  1. Valida sesión activa.
+  1. Valida sesión activa (vía AppSync).
   2. Valida número (4 dígitos).
   3. Valida monto (entre 500 y 2000).
-  4. Guarda en tabla `Bets` de DynamoDB.
+  4. Llama a AppSync mutation `createBet`.
   5. Simula pago exitoso.
 - **Output**: `{ success: true, betId, paidAt, amount }`
 
 #### 7. `GET /api/bets?sessionId=xxx` - Historial de Apuestas
 - **Proceso**:
   1. Valida sesión activa.
-  2. Consulta apuestas por sessionId (usando partition key).
+  2. Llama a AppSync query `listBets` con filtro `sessionId.eq`.
 - **Output**: `{ bets: [...] }`
 
 #### 8. `GET /api/games` - Catálogo de Juegos
-- **Output**: `{ games: [...] }` (2 juegos predefinidos)
-
----
-
-## Cliente DynamoDB (`app/lib/dynamodb.ts`)
-
-```typescript
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-
-const client = new DynamoDBClient({
-  region: process.env.AWS_REGION || "us-east-1",
-});
-
-export const docClient = DynamoDBDocumentClient.from(client);
-```
-
-- Se usa AWS SDK v3 (`@aws-sdk/client-dynamodb` y `@aws-sdk/lib-dynamodb`).
-- En Amplify, las credenciales se obtienen automáticamente del IAM Role.
-- En desarrollo local, se usan variables de entorno (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+- Llama a AppSync query `listGames`.
+- **Output**: `{ games: [...] }`
 
 ---
 
@@ -179,7 +248,7 @@ export const docClient = DynamoDBDocumentClient.from(client);
 11. Bot muestra confirmación: "✅ Apuesta registrada..."
 
 ### Estados de Conversación
-- Se manejará un estado en DynamoDB (tabla `Conversations`) para trackear en qué paso del flujo está el usuario:
+- Se manejará un estado en DynamoDB (tabla `Conversation_prueba_whatsapp` vía AppSync) para trackear en qué paso del flujo está el usuario:
   - `idle` → Esperando selección de menú
   - `selecting_game` → Esperando selección de juego
   - `selecting_draw` → Esperando selección de sorteo
@@ -192,9 +261,9 @@ export const docClient = DynamoDBDocumentClient.from(client);
 ## Formato de Moneda
 
 - Todos los montos se formatean con separador de miles y símbolo de peso: `$1.000`, `$1.500`, `$2.000`.
-- Se usa `Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 })` o equivalente.
+- Se usa `Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 })`.
 - Utilidad compartida en `app/lib/formatCurrency.ts` para frontend y backend.
-- En la base de datos, los montos se almacenan como número y se formatean solo al enviar respuestas al usuario.
+- En la base de datos, los montos se almacenan como número y se formatean solo al enviar respuestas.
 
 ---
 
@@ -241,58 +310,49 @@ export const docClient = DynamoDBDocumentClient.from(client);
 ]
 ```
 
-### Script de Seed para DynamoDB
-- Script en `scripts/seed.ts` que usa AWS SDK para crear los items iniciales en la tabla `Games`.
-- Se puede ejecutar con `npx tsx scripts/seed.ts`.
+### Seed
+- Se ejecuta con `bash scripts/seed-games.sh` (usa AWS CLI para insertar directamente en DynamoDB).
+- Alternativa: usar la mutation `createGame` de AppSync.
 
 ---
 
-## Configuración AWS Amplify
+## Configuración
 
-### Tablas DynamoDB a crear
-1. `Sessions` - PK: `sessionId`
-2. `Games` - PK: `id`
-3. `Bets` - PK: `sessionId`, SK: `createdAt`
-4. `Conversations` - PK: `phoneNumber`
-
-### Variables de Entorno (Amplify Console)
+### Variables de Entorno (`.env.local` / Amplify Console)
 ```bash
+# AppSync
+APPSYNC_ENDPOINT=https://xxx.appsync-api.us-east-1.amazonaws.com/graphql
+APPSYNC_API_KEY=da2-xxxxxxxxxxxxxxxxxx
 AWS_REGION=us-east-1
+
+# WhatsApp
 WHATSAPP_TOKEN=YOUR_TOKEN
 WHATSAPP_VERIFY_TOKEN=YOUR_VERIFY_TOKEN
 WHATSAPP_PHONE_NUMBER_ID=YOUR_PHONE_ID
 ```
 
-### IAM Policy (para el rol de Amplify)
-El rol de ejecución de Amplify necesita permisos de DynamoDB:
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "dynamodb:GetItem",
-    "dynamodb:PutItem",
-    "dynamodb:UpdateItem",
-    "dynamodb:Query",
-    "dynamodb:Scan"
-  ],
-  "Resource": [
-    "arn:aws:dynamodb:*:*:table/Sessions",
-    "arn:aws:dynamodb:*:*:table/Games",
-    "arn:aws:dynamodb:*:*:table/Bets",
-    "arn:aws:dynamodb:*:*:table/Conversations"
-  ]
-}
-```
+### Tablas DynamoDB
+Todas con PK `id` (String), capacity On-demand:
+1. `Session_prueba_whatsapp`
+2. `Game_prueba_whatsapp`
+3. `Bet_prueba_whatsapp`
+4. `Conversation_prueba_whatsapp`
+
+### AppSync
+- API con auth mode: API Key
+- 4 Data Sources (uno por tabla DynamoDB)
+- 15 Resolvers (8 queries + 7 mutations) en JavaScript runtime
 
 ---
 
-## Dependencias Adicionales
+## Dependencias
 
 ### Paquetes npm
-- `@aws-sdk/client-dynamodb` - Cliente DynamoDB
-- `@aws-sdk/lib-dynamodb` - Document Client (simplifica operaciones)
-- `uuid` - Generación de IDs únicos (o usar `crypto.randomUUID()`)
+- `aws-amplify` — SDK de Amplify (cliente GraphQL para AppSync)
+- `next` — Framework
+- `react` / `react-dom` — UI
 
-### Desarrollo local
-- Se puede usar DynamoDB Local (Docker) para desarrollo sin conexión a AWS.
-- Alternativa: conectar directamente a tablas de desarrollo en la cuenta de AWS.
+### No se necesita (removido del plan original)
+- ~~`@aws-sdk/client-dynamodb`~~ — No se accede directo a DynamoDB
+- ~~`@aws-sdk/lib-dynamodb`~~ — No se accede directo a DynamoDB
+- ~~`uuid`~~ — Se usa `crypto.randomUUID()` nativo de Node.js
