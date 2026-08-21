@@ -1,0 +1,44 @@
+type Session_prueba_whatsapp @model {
+  id: ID!
+  sessionId: String!
+  token: String!
+  latitude: Float
+  longitude: Float
+  createdAt: AWSDateTime!
+  expiresAt: AWSDateTime!
+  phoneNumber: String
+  active: Boolean!
+}
+
+type Game_prueba_whatsapp @model {
+  id: ID!
+  name: String!
+  description: String!
+  icon: String!
+}
+
+type Bet_prueba_whatsapp @model {
+  id: ID!
+  sessionId: String!
+  gameId: String!
+  drawId: String!
+  drawName: String!
+  number: String!
+  amount: Float!
+  paidAt: AWSDateTime
+  source: String!
+  createdAt: AWSDateTime!
+}
+
+type Conversation_prueba_whatsapp @model {
+  id: ID!
+  phoneNumber: String!
+  sessionId: String
+  state: String!
+  selectedGame: String
+  selectedDraw: String
+  betNumber: String
+  betAmount: Float
+  currentPage: Int
+  updatedAt: AWSDateTime
+}
