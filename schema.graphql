@@ -175,6 +175,36 @@ type ConversationConnection {
   nextToken: String
 }
 
+type Config_prueba_whatsapp {
+  id: ID!
+  whatsappToken: String!
+  whatsappPhoneNumberId: String!
+  whatsappVerifyToken: String!
+  whatsappApiVersion: String!
+  testPhoneNumber: String!
+  updatedAt: AWSDateTime
+}
+
+input CreateConfig_prueba_whatsappInput {
+  id: ID!
+  whatsappToken: String!
+  whatsappPhoneNumberId: String!
+  whatsappVerifyToken: String!
+  whatsappApiVersion: String!
+  testPhoneNumber: String!
+  updatedAt: AWSDateTime
+}
+
+input UpdateConfig_prueba_whatsappInput {
+  id: ID!
+  whatsappToken: String
+  whatsappPhoneNumberId: String
+  whatsappVerifyToken: String
+  whatsappApiVersion: String
+  testPhoneNumber: String
+  updatedAt: AWSDateTime
+}
+
 type Query {
   getSession(id: ID!): Session_prueba_whatsapp
   listSessions(filter: TableSessionFilterInput, limit: Int, nextToken: String): SessionConnection
@@ -184,6 +214,7 @@ type Query {
   listBets(filter: TableBetFilterInput, limit: Int, nextToken: String): BetConnection
   getConversation(id: ID!): Conversation_prueba_whatsapp
   listConversations(filter: TableConversationFilterInput, limit: Int, nextToken: String): ConversationConnection
+  getConfig(id: ID!): Config_prueba_whatsapp
 }
 
 type Mutation {
@@ -194,6 +225,8 @@ type Mutation {
   createBet(input: CreateBet_prueba_whatsappInput!): Bet_prueba_whatsapp
   createConversation(input: CreateConversation_prueba_whatsappInput!): Conversation_prueba_whatsapp
   updateConversation(input: UpdateConversation_prueba_whatsappInput!): Conversation_prueba_whatsapp
+  createConfig(input: CreateConfig_prueba_whatsappInput!): Config_prueba_whatsapp
+  updateConfig(input: UpdateConfig_prueba_whatsappInput!): Config_prueba_whatsapp
 }
 
 type Subscription {

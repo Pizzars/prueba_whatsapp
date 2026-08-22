@@ -107,3 +107,32 @@ export const updateConversation = /* GraphQL */ `
     }
   }
 `;
+
+// Config
+export const createConfig = /* GraphQL */ `
+  mutation CreateConfig($input: CreateConfig_prueba_whatsappInput!) {
+    createConfig(input: $input) {
+      id
+      whatsappToken
+      whatsappPhoneNumberId
+      whatsappVerifyToken
+      whatsappApiVersion
+      testPhoneNumber
+      updatedAt
+    }
+  }
+`;
+
+export const updateConfig = /* GraphQL */ `
+  mutation UpdateConfig($input: UpdateConfig_prueba_whatsappInput!) {
+    updateConfig(input: $input) {
+      id
+      whatsappToken
+      whatsappPhoneNumberId
+      whatsappVerifyToken
+      whatsappApiVersion
+      testPhoneNumber
+      updatedAt
+    }
+  }
+`;

@@ -139,3 +139,18 @@ export const listConversations = /* GraphQL */ `
     }
   }
 `;
+
+// Config
+export const getConfig = /* GraphQL */ `
+  query GetConfig($id: ID!) {
+    getConfig(id: $id) {
+      id
+      whatsappToken
+      whatsappPhoneNumberId
+      whatsappVerifyToken
+      whatsappApiVersion
+      testPhoneNumber
+      updatedAt
+    }
+  }
+`;

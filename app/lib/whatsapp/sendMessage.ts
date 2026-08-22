@@ -1,10 +1,13 @@
-import { WHATSAPP_TOKEN, WHATSAPP_API_URL } from "@/app/lib/constants";
+import { getWhatsAppConfig } from "@/app/lib/whatsapp-config";
 
 async function sendRequest(body: object) {
-  const response = await fetch(WHATSAPP_API_URL, {
+  const config = await getWhatsAppConfig();
+  const apiUrl = `https://graph.facebook.com/${config.whatsappApiVersion}/${config.whatsappPhoneNumberId}/messages`;
+
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      Authorization: `Bearer ${config.whatsappToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),

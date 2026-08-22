@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleIncomingMessage } from "@/app/lib/whatsapp/messageHandler";
-import { WHATSAPP_VERIFY_TOKEN } from "@/app/lib/constants";
+import { getWhatsAppConfig } from "@/app/lib/whatsapp-config";
 
 /**
  * GET: Verificación del webhook por Meta
@@ -12,7 +12,9 @@ export async function GET(request: Request) {
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
-  if (mode === "subscribe" && token === WHATSAPP_VERIFY_TOKEN) {
+  const config = await getWhatsAppConfig();
+
+  if (mode === "subscribe" && token === config.whatsappVerifyToken) {
     return new Response(challenge, { status: 200 });
   }
 
@@ -26,12 +28,10 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // Extraer mensaje del payload de WhatsApp
     const entry = body.entry?.[0];
     const changes = entry?.changes?.[0];
     const value = changes?.value;
 
-    // Verificar que sea un mensaje (no un status update)
     if (!value?.messages || value.messages.length === 0) {
       return NextResponse.json({ status: "ok" });
     }
@@ -40,7 +40,6 @@ export async function POST(request: Request) {
     const phoneNumber = message.from;
     const messageType = message.type;
 
-    // Construir payload según tipo de mensaje
     let messagePayload: {
       type: string;
       text?: string;
@@ -69,7 +68,6 @@ export async function POST(request: Request) {
         break;
 
       case "interactive":
-        // Respuesta a botones o listas
         const interactiveReply =
           message.interactive?.button_reply || message.interactive?.list_reply;
         messagePayload = {
@@ -89,7 +87,6 @@ export async function POST(request: Request) {
         break;
     }
 
-    // Procesar el mensaje
     handleIncomingMessage(phoneNumber, messagePayload).catch((err) => {
       console.error("Error procesando mensaje WhatsApp:", err);
     });
