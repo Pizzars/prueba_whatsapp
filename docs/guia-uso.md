@@ -49,19 +49,18 @@ https://main.d1bz5bsylv88le.amplifyapp.com
 ### Interacción paso a paso
 
 1. **Usuario envía cualquier mensaje** al número de WhatsApp Business
-2. **Bot solicita ubicación** — envía un mensaje interactivo con botón de compartir ubicación
-3. **Usuario comparte su ubicación** — la app la guarda temporalmente
-4. **Bot ofrece opciones de login:**
-   - "Iniciar por aquí" → login directo por WhatsApp (enviar documento y contraseña separados por espacio)
-   - "Iniciar por Web" → bot envía URL de login para completar en el navegador
-5. **Login por WhatsApp:** usuario envía `1023456789 1234567890` (documento + contraseña)
-6. **Login por Web:** usuario abre la URL, hace login en el navegador, y cuando vuelve a WhatsApp y envía un mensaje, el bot detecta la sesión activa
-7. **Menú principal** — una vez con sesión activa:
+2. **Bot ofrece 2 opciones** (botones interactivos):
+   - "Ingresar con URL" → login via navegador
+   - "Usuario y contraseña" → login directamente por chat
+3. **Opción URL:** bot envía URL, usuario hace login en la web, bot detecta automáticamente y envía menú
+4. **Opción credenciales:** bot pide ubicación → documento (10 dígitos) → contraseña → login
+5. **Menú principal** — una vez con sesión activa:
    - `1` → Ver juegos disponibles
    - `2` → Hacer una apuesta (juego → sorteo → número → monto)
    - `3` → Ver mis apuestas
    - `4` → Cerrar sesión
    - `menu` → Volver al menú en cualquier momento
+   - `terminar` → Cerrar sesión desde cualquier estado
 
 ### Probar envío de mensajes
 
@@ -72,10 +71,13 @@ Desde `/config`, usa el botón "Enviar mensaje de prueba" para verificar que la 
 ## Monitoreo
 
 En `/monitor` puedes ver en tiempo real:
-- **Conversaciones WhatsApp:** número de teléfono, estado actual del flujo, sessionId asociado
-- **Sesiones:** nombre, documento, ubicación, si está activa o expirada, tiempo restante
+- **Conversaciones WhatsApp:** número de teléfono, estado actual del flujo (con etiquetas legibles y colores), progreso de apuesta
+- **Sesiones activas (tab):** nombre, documento, ubicación, vigencia (expira en Xm), hora de creación
+- **Historial (tab):** sesiones cerradas o expiradas
 
-Usa el botón "Refrescar" para actualizar los datos.
+Funciones:
+- **Refrescar**: actualiza los datos según el tab seleccionado
+- **Cerrar todas**: cierra todas las sesiones activas, notifica por WhatsApp a los usuarios asociados
 
 ---
 
@@ -83,5 +85,9 @@ Usa el botón "Refrescar" para actualizar los datos.
 
 - Los tokens de WhatsApp temporales duran **24 horas**. Si dejan de funcionar, genera uno nuevo en Meta y actualízalo desde `/config`.
 - La app debe estar **publicada** en Meta para recibir webhooks de usuarios reales. En modo desarrollo, solo los números agregados como testers reciben/envían mensajes.
-- Las sesiones de usuario expiran en **24 horas**.
+- Las sesiones de usuario expiran en **1 hora**.
 - Los pagos son siempre exitosos (plataforma de pruebas).
+- WhatsApp Flows (formularios nativos) requieren Business Portfolio verificado. Mientras tanto se usa login por texto paso a paso.
+- La configuración de WhatsApp se guarda en DynamoDB — se puede cambiar desde `/config` sin redesplegar.
+- Desde `/monitor` se pueden cerrar todas las sesiones activas de una vez (notifica a los usuarios por WhatsApp).
+- Para ver documentación detallada de la integración WhatsApp, ver `docs/whatsapp-integracion.md`.
