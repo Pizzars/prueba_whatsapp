@@ -222,15 +222,14 @@ async function handleNewUser(
   phoneNumber: string,
   conversation: Conversation | null
 ): Promise<void> {
-  await sendText(
+  await sendButtons(
     phoneNumber,
-    "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\n¿Cómo deseas iniciar sesión?"
+    "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\n¿Cómo deseas iniciar sesión?",
+    [
+      { id: "login_web", title: "Ingresar con URL" },
+      { id: "login_whatsapp", title: "Usuario y contraseña" },
+    ]
   );
-
-  await sendButtons(phoneNumber, "Elige una opción:", [
-    { id: "login_web", title: "Ingresar con URL" },
-    { id: "login_whatsapp", title: "Usuario y contraseña" },
-  ]);
 
   await createOrUpdateConversation(conversation, phoneNumber, {
     state: "choosing_login_method",
