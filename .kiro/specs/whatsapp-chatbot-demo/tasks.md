@@ -13,70 +13,70 @@
 
 ---
 
-## Fase 1: Plataforma Web — Servicios y Login
+## Fase 1: Plataforma Web — Servicios y Login ✅ (Completado)
 
 ### Tarea 1.1: Usuarios hardcoded
-- [ ] Crear `app/lib/users.ts` con lista de 4 usuarios (documento + nombre).
-- [ ] Exportar función `findUserByDocumento()`.
+- [x] Crear `app/lib/users.ts` con lista de 4 usuarios (documento + nombre).
+- [x] Exportar función `findUserByDocumento()`.
 
 ### Tarea 1.2: Lógica de sesiones
-- [ ] Crear `app/lib/sessions.ts` con funciones:
+- [x] Crear `app/lib/sessions.ts` con funciones:
   - `createNewSession(data)` → crea sesión en AppSync, retorna token.
   - `validateSession(token)` → busca sesión, verifica activa y no expirada.
   - `getSessionBySessionId(sessionId)` → busca por sessionId (para WhatsApp).
-- [ ] Estas funciones son la base que usan TODOS los servicios.
+- [x] Estas funciones son la base que usan TODOS los servicios.
 
 ### Tarea 1.3: API Route — Login
-- [ ] Crear `app/api/auth/login/route.ts` (POST).
-- [ ] Recibir `{ documento, latitude, longitude, sessionId? }`.
-- [ ] Validar documento contra usuarios hardcoded.
-- [ ] Crear sesión vía `createNewSession()`.
-- [ ] Retornar token, datos de usuario, expiración.
+- [x] Crear `app/api/auth/login/route.ts` (POST).
+- [x] Recibir `{ documento, latitude, longitude, sessionId? }`.
+- [x] Validar documento contra usuarios hardcoded.
+- [x] Crear sesión vía `createNewSession()`.
+- [x] Retornar token, datos de usuario, expiración.
 
 ### Tarea 1.4: API Route — Validar Sesión
-- [ ] Crear `app/api/sessions/validate/route.ts` (GET).
-- [ ] Leer token del header `Authorization: Bearer <token>`.
-- [ ] Validar con `validateSession(token)`.
-- [ ] Retornar estado de la sesión.
+- [x] Crear `app/api/sessions/validate/route.ts` (GET).
+- [x] Leer token del header `Authorization: Bearer <token>`.
+- [x] Validar con `validateSession(token)`.
+- [x] Retornar estado de la sesión.
 
 ### Tarea 1.5: Pantalla de Login (Frontend)
-- [ ] Crear `app/login/page.tsx` (Client Component).
-- [ ] Input para documento (10 dígitos, validación visual).
-- [ ] Botón "Iniciar Sesión" → solicita ubicación → llama `POST /api/auth/login`.
-- [ ] Leer param `session` de URL (si viene de WhatsApp).
-- [ ] Si login exitoso: guardar token en localStorage.
-- [ ] Si tiene `session` param → redirigir a `/login/success`.
-- [ ] Si no tiene `session` param → redirigir a `/` (dashboard).
+- [x] Crear `app/login/page.tsx` (Client Component).
+- [x] Input para documento (10 dígitos, validación visual).
+- [x] Botón "Iniciar Sesión" → solicita ubicación → llama `POST /api/auth/login`.
+- [x] Leer param `session` de URL (si viene de WhatsApp).
+- [x] Si login exitoso: guardar token en localStorage.
+- [x] Si tiene `session` param → redirigir a `/login/success`.
+- [x] Si no tiene `session` param → redirigir a `/` (dashboard).
 
 ### Tarea 1.6: Pantalla Post-Login WhatsApp
-- [ ] Crear `app/login/success/page.tsx`.
-- [ ] Mostrar "Sesión iniciada correctamente".
-- [ ] Mostrar "Puedes volver a WhatsApp".
-- [ ] Deep link a WhatsApp (`https://wa.me/`).
+- [x] Crear `app/login/success/page.tsx`.
+- [x] Mostrar "Sesión iniciada correctamente".
+- [x] Mostrar "Puedes volver a WhatsApp".
+- [x] Deep link a WhatsApp (`https://wa.me/`).
 
 ---
 
-## Fase 2: Plataforma Web — Juegos y Apuestas
+## Fase 2: Plataforma Web — Juegos y Apuestas ✅ (Completado)
 
 ### Tarea 2.1: Utilidades compartidas
-- [ ] Crear `app/lib/draws.ts` — genera sorteos ficticios (8:00-22:00, ID determinístico).
-- [ ] Crear `app/lib/formatCurrency.ts` — formato COP sin decimales.
+- [x] Crear `app/lib/draws.ts` — genera sorteos ficticios (8:00-22:00, ID determinístico).
+- [x] Crear `app/lib/formatCurrency.ts` — formato COP sin decimales.
 
 ### Tarea 2.2: API Routes de Servicios
-- [ ] Crear `app/api/games/route.ts` (GET):
+- [x] Crear `app/api/games/route.ts` (GET):
   - Validar sesión.
   - Consultar `listGames` en AppSync.
   - Retornar juegos.
-- [ ] Crear `app/api/draws/route.ts` (GET):
+- [x] Crear `app/api/draws/route.ts` (GET):
   - Validar sesión.
   - Generar sorteos del día.
   - Paginar (10 por página, params `page` y `gameId`).
-- [ ] Crear `app/api/bets/route.ts`:
+- [x] Crear `app/api/bets/route.ts`:
   - POST: Validar sesión → validar número (4 dígitos) → validar monto (500-2000) → `createBet` en AppSync.
   - GET: Validar sesión → `listBets` filtrado por sessionId del token.
 
 ### Tarea 2.3: Dashboard (Frontend)
-- [ ] Actualizar `app/page.tsx`:
+- [x] Actualizar `app/page.tsx`:
   - Si no hay token en localStorage → redirigir a `/login`.
   - Si hay token → validar sesión con `/api/sessions/validate`.
   - Mostrar nombre del usuario logueado.
@@ -84,20 +84,20 @@
   - Permitir seleccionar un juego.
 
 ### Tarea 2.4: Componentes de Apuesta
-- [ ] Crear `app/components/GameCard.tsx` — Tarjeta visual del juego (nombre, ícono, descripción).
-- [ ] Crear `app/components/DrawList.tsx` — Lista de sorteos del juego seleccionado.
-- [ ] Crear `app/components/BetForm.tsx` — Flujo secuencial:
+- [x] Crear `app/components/GameCard.tsx` — Tarjeta visual del juego (nombre, ícono, descripción).
+- [x] Crear `app/components/DrawList.tsx` — Lista de sorteos del juego seleccionado.
+- [x] Crear `app/components/BetForm.tsx` — Flujo secuencial:
   - Seleccionar sorteo → habilita input número.
   - Completar 4 cifras → habilita input monto.
   - Monto válido → habilita botón "Pagar".
   - Click "Pagar" → POST `/api/bets` → muestra confirmación.
-- [ ] Crear `app/components/BetHistory.tsx` — Lista de apuestas (monto formateado, source, fecha).
+- [x] Crear `app/components/BetHistory.tsx` — Lista de apuestas (monto formateado, source, fecha).
 
 ### Tarea 2.5: Integración completa del Dashboard
-- [ ] Conectar GameCard → al click muestra DrawList.
-- [ ] Conectar DrawList + BetForm → flujo de apuesta.
-- [ ] Agregar sección de historial con BetHistory.
-- [ ] Verificar flujo completo: login → seleccionar juego → apostar → ver historial.
+- [x] Conectar GameCard → al click muestra DrawList.
+- [x] Conectar DrawList + BetForm → flujo de apuesta.
+- [x] Agregar sección de historial con BetHistory.
+- [x] Verificar flujo completo: login → seleccionar juego → apostar → ver historial.
 
 ---
 
@@ -153,7 +153,7 @@
 
 ## Orden de Ejecución
 1. ~~Fase 0~~ → Infraestructura ✅
-2. **Fase 1** → Login + Sesiones (backend + frontend)
-3. **Fase 2** → Juegos + Apuestas (servicios + UI completa)
+2. ~~Fase 1~~ → Login + Sesiones ✅
+3. ~~Fase 2~~ → Juegos + Apuestas ✅
 4. **Fase 3** → WhatsApp (adaptador sobre servicios existentes)
 5. **Fase 4** → Deploy y verificación
