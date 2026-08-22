@@ -101,37 +101,37 @@
 
 ---
 
-## Fase 3: WhatsApp — Adaptador sobre servicios existentes
+## Fase 3: WhatsApp — Adaptador sobre servicios existentes ✅ (Completado)
 
 ### Tarea 3.1: Webhook de WhatsApp
-- [ ] Crear `app/api/whatsapp/webhook/route.ts`.
-- [ ] GET: Verificación (validar `hub.verify_token`, responder `hub.challenge`).
-- [ ] POST: Parsear mensaje, extraer phoneNumber y texto, delegar a messageHandler.
+- [x] Crear `app/api/whatsapp/webhook/route.ts`.
+- [x] GET: Verificación (validar `hub.verify_token`, responder `hub.challenge`).
+- [x] POST: Parsear mensaje, extraer phoneNumber y texto, delegar a messageHandler.
 
 ### Tarea 3.2: Envío de Mensajes
-- [ ] Crear `app/lib/whatsapp/sendMessage.ts`.
-- [ ] Función `sendText(phoneNumber, message)` → WhatsApp Cloud API.
-- [ ] Función `sendInteractive(phoneNumber, body, buttons)` → mensajes con opciones.
+- [x] Crear `app/lib/whatsapp/sendMessage.ts`.
+- [x] Función `sendText(phoneNumber, message)` → WhatsApp Cloud API.
+- [x] Función `sendInteractive(phoneNumber, body, buttons)` → mensajes con opciones.
 
 ### Tarea 3.3: Manejador de Mensajes (Adaptador)
-- [ ] Crear `app/lib/whatsapp/messageHandler.ts`.
-- [ ] Gestionar estado de conversación en AppSync (`Conversation_prueba_whatsapp`).
-- [ ] Estados: `idle`, `awaiting_login`, `selecting_game`, `selecting_draw`, `entering_number`, `entering_amount`.
-- [ ] Implementar flujos:
+- [x] Crear `app/lib/whatsapp/messageHandler.ts`.
+- [x] Gestionar estado de conversación en AppSync (`Conversation_prueba_whatsapp`).
+- [x] Estados: `idle`, `awaiting_login`, `selecting_game`, `selecting_draw`, `entering_number`, `entering_amount`.
+- [x] Implementar flujos:
   - **Sin sesión**: Enviar URL de login (`${APP_URL}/login?session=${sessionId}`).
   - **Con sesión** → Menú principal:
     - "1" → Listar juegos (llama servicio de juegos).
     - "2" → Flujo de apuesta (llama servicios de sorteos + apuestas).
     - "3" → Ver apuestas (llama servicio de historial).
-- [ ] **Importante**: El messageHandler consume los mismos servicios/funciones que las API Routes, NO reimplementa lógica.
+- [x] **Importante**: El messageHandler consume los mismos servicios/funciones que las API Routes, NO reimplementa lógica.
 
 ### Tarea 3.4: Asociación Sesión ↔ WhatsApp
-- [ ] Cuando usuario hace login desde URL con `sessionId`:
+- [x] Cuando usuario hace login desde URL con `sessionId`:
   - La sesión se crea con ese sessionId.
-- [ ] Cuando bot recibe mensaje post-login:
+- [x] Cuando bot recibe mensaje post-login:
   - Busca conversación por phoneNumber → obtiene sessionId → busca sesión → valida activa.
   - Asocia phoneNumber a la sesión (`updateSession`).
-- [ ] A partir de ahí, el bot usa el token de esa sesión para consumir servicios.
+- [x] A partir de ahí, el bot usa el token de esa sesión para consumir servicios.
 
 ---
 
@@ -143,8 +143,12 @@
   - `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
   - `NEXT_PUBLIC_APP_URL`
 
-### Tarea 4.2: Verificación
-- [ ] `npm run build` sin errores.
+### Tarea 4.2: Actualizar schema en AppSync
+- [ ] Ejecutar `bash scripts/update-schema.sh` o pegar schema manualmente.
+- [ ] Verificar que los campos `documento`, `nombre` y filtro `token` estén activos.
+
+### Tarea 4.3: Verificación
+- [x] `npm run build` sin errores.
 - [ ] Probar flujo web completo: login → juegos → apuesta → historial.
 - [ ] Probar webhook WhatsApp con herramienta de Meta.
 - [ ] Verificar que WhatsApp usa los mismos servicios que la web.
@@ -155,5 +159,5 @@
 1. ~~Fase 0~~ → Infraestructura ✅
 2. ~~Fase 1~~ → Login + Sesiones ✅
 3. ~~Fase 2~~ → Juegos + Apuestas ✅
-4. **Fase 3** → WhatsApp (adaptador sobre servicios existentes)
-5. **Fase 4** → Deploy y verificación
+4. ~~Fase 3~~ → WhatsApp ✅
+5. **Fase 4** → Deploy y verificación (pendiente: configurar variables + probar en producción)
