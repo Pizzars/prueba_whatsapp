@@ -37,6 +37,9 @@ yarn-error.log*
 # aws amplify
 aws-exports.js
 
+# keys
+keys/
+
 # vercel
 .vercel
 
