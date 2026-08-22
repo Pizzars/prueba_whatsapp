@@ -105,3 +105,41 @@ export async function sendList(
     },
   });
 }
+
+/**
+ * Enviar un WhatsApp Flow (formulario interactivo)
+ */
+export async function sendFlow(
+  phoneNumber: string,
+  bodyText: string,
+  flowId: string,
+  flowCta: string,
+  flowAction: "navigate" | "data_exchange" = "navigate",
+  flowActionPayload?: { screen: string; data?: Record<string, unknown> }
+) {
+  const parameters: Record<string, unknown> = {
+    flow_message_version: "3",
+    flow_id: flowId,
+    flow_cta: flowCta,
+    flow_action: flowAction,
+  };
+
+  if (flowActionPayload) {
+    parameters.flow_action_payload = flowActionPayload;
+  }
+
+  return sendRequest({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: phoneNumber,
+    type: "interactive",
+    interactive: {
+      type: "flow",
+      body: { text: bodyText },
+      action: {
+        name: "flow",
+        parameters,
+      },
+    },
+  });
+}

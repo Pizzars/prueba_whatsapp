@@ -114,12 +114,17 @@ export async function handleIncomingMessage(
   // Flujo según estado
   switch (state) {
     case "new":
-      // Primera vez - pedir ubicación
+      // Primera vez - ofrecer opciones de login
       await handleNewUser(phoneNumber, conversation);
       break;
 
+    case "choosing_login_method":
+      // Eligiendo método de login
+      await handleChooseLoginMethod(phoneNumber, conversation!, payload);
+      break;
+
     case "awaiting_location":
-      // Esperando ubicación
+      // Esperando ubicación (flujo credenciales)
       await handleLocation(phoneNumber, conversation!, payload);
       break;
 
@@ -177,17 +182,64 @@ async function handleNewUser(
 ): Promise<void> {
   await sendText(
     phoneNumber,
-    "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\nPara comenzar, necesito tu ubicación."
+    "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\n¿Cómo deseas iniciar sesión?"
   );
 
-  await sendLocationRequest(
-    phoneNumber,
-    "📍 Comparte tu ubicación para continuar:"
-  );
+  await sendButtons(phoneNumber, "Elige una opción:", [
+    { id: "login_web", title: "Ingresar con URL" },
+    { id: "login_whatsapp", title: "Usuario y contraseña" },
+  ]);
 
   await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "awaiting_location",
+    state: "choosing_login_method",
   });
+}
+
+// --- Choose login method ---
+
+async function handleChooseLoginMethod(
+  phoneNumber: string,
+  conversation: Conversation,
+  payload: MessagePayload
+): Promise<void> {
+  const interactiveId = payload.type === "interactive" ? payload.interactive?.id || "" : "";
+  const text = payload.type === "text" ? payload.text || "" : "";
+
+  if (interactiveId === "login_web" || text === "1") {
+    // Opción 1: Login por URL
+    const sessionId = crypto.randomUUID();
+    const loginUrl = `${APP_URL}/login?session=${sessionId}`;
+
+    await createOrUpdateConversation(conversation, phoneNumber, {
+      sessionId,
+      state: "awaiting_login",
+    });
+
+    await sendText(
+      phoneNumber,
+      `🔗 Abre este enlace para iniciar sesión:\n\n${loginUrl}\n\nDespués de iniciar sesión, el navegador te dará la opción de volver al chat. Una vez aquí, envía cualquier mensaje para continuar.`
+    );
+    return;
+  }
+
+  if (interactiveId === "login_whatsapp" || text === "2") {
+    // Opción 2: Credenciales por WhatsApp → primero pedir ubicación
+    await sendLocationRequest(
+      phoneNumber,
+      "📍 Primero necesito tu ubicación. Compártela usando el botón:"
+    );
+
+    await createOrUpdateConversation(conversation, phoneNumber, {
+      state: "awaiting_location",
+    });
+    return;
+  }
+
+  // Si no eligió una opción válida, volver a preguntar
+  await sendButtons(phoneNumber, "Por favor elige una opción:", [
+    { id: "login_web", title: "Ingresar con URL" },
+    { id: "login_whatsapp", title: "Usuario y contraseña" },
+  ]);
 }
 
 // --- Location flow ---
@@ -209,25 +261,21 @@ async function handleLocation(
     return;
   }
 
-  // Guardar ubicación temporalmente (la usaremos al crear la sesión)
-  // La guardamos en el campo betNumber/betAmount temporalmente como lat/lng
+  // Guardar ubicación temporalmente
   const { latitude, longitude } = payload.location;
 
   await createOrUpdateConversation(conversation, phoneNumber, {
     state: "awaiting_credentials",
     betNumber: String(latitude),
-    betAmount: longitude, // Reutilizamos este campo para guardar lng
+    betAmount: longitude,
   });
 
+  // TODO: Cuando el flow test_login esté configurado, enviar el flow aquí
+  // Por ahora, pedir credenciales por texto
   await sendText(
     phoneNumber,
-    "✅ Ubicación recibida.\n\n¿Cómo deseas iniciar sesión?"
+    "✅ Ubicación recibida.\n\n📝 Ahora ingresa tu *documento* y *contraseña* separados por un espacio.\n\nEjemplo: `1023456789 1234567890`"
   );
-
-  await sendButtons(phoneNumber, "Elige una opción:", [
-    { id: "login_whatsapp", title: "Iniciar por aquí" },
-    { id: "login_web", title: "Iniciar por Web" },
-  ]);
 }
 
 // --- Awaiting credentials (login by WhatsApp) ---
@@ -238,27 +286,9 @@ async function handleCredentials(
   payload: MessagePayload
 ): Promise<void> {
   const text = payload.type === "text" ? payload.text || "" : "";
-  const interactiveId = payload.type === "interactive" ? payload.interactive?.id || "" : "";
 
-  // Si seleccionó login por web
-  if (interactiveId === "login_web") {
-    const sessionId = crypto.randomUUID();
-    const loginUrl = `${APP_URL}/login?session=${sessionId}`;
-
-    await createOrUpdateConversation(conversation, phoneNumber, {
-      sessionId,
-      state: "awaiting_login",
-    });
-
-    await sendText(
-      phoneNumber,
-      `🔗 Inicia sesión aquí:\n${loginUrl}\n\nDespués de iniciar sesión, vuelve aquí y escribe cualquier mensaje.`
-    );
-    return;
-  }
-
-  // Si seleccionó login por WhatsApp
-  if (interactiveId === "login_whatsapp") {
+  // Si no es texto, recordar el formato
+  if (!text.trim()) {
     await sendText(
       phoneNumber,
       "📝 Ingresa tu *documento* y *contraseña* separados por un espacio.\n\nEjemplo: `1023456789 1234567890`"
