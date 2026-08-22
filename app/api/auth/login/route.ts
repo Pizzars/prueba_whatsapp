@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { validateCredentials } from "@/app/lib/users";
-import { createNewSession } from "@/app/lib/sessions";
+import { createNewSession, associatePhoneNumber } from "@/app/lib/sessions";
+import { client } from "@/app/lib/amplify-server";
+import { listConversations } from "@/app/lib/graphql/queries";
+import { updateConversation } from "@/app/lib/graphql/mutations";
+import { sendText } from "@/app/lib/whatsapp/sendMessage";
 
 export async function POST(request: Request) {
   try {
@@ -57,6 +61,16 @@ export async function POST(request: Request) {
       sessionId: sessionId || undefined,
     });
 
+    // Si viene de WhatsApp (tiene sessionId), notificar al chatbot
+    if (sessionId) {
+      try {
+        await notifyWhatsAppLogin(sessionId, session.sessionId, user.nombre);
+      } catch (err) {
+        console.error("Error notificando a WhatsApp:", err);
+        // No falla el login por esto
+      }
+    }
+
     return NextResponse.json({
       success: true,
       token: session.token,
@@ -74,4 +88,63 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Busca la conversación asociada al sessionId, actualiza su estado
+ * y envía un mensaje de bienvenida + menú al usuario por WhatsApp.
+ */
+async function notifyWhatsAppLogin(
+  sessionId: string,
+  finalSessionId: string,
+  nombre: string
+) {
+  // Buscar la conversación que tiene este sessionId
+  const result = await client.graphql({
+    query: listConversations,
+    variables: {
+      filter: { sessionId: { eq: sessionId } },
+      limit: 1,
+    },
+  });
+
+  const conversations = (
+    result as {
+      data: { listConversations: { items: { id: string; phoneNumber: string; sessionId: string }[] } };
+    }
+  ).data.listConversations.items;
+
+  if (!conversations || conversations.length === 0) {
+    console.log("No se encontró conversación para sessionId:", sessionId);
+    return;
+  }
+
+  const conversation = conversations[0];
+  const phoneNumber = conversation.phoneNumber;
+
+  // Asociar el phone number a la sesión
+  await associatePhoneNumber(finalSessionId, phoneNumber);
+
+  // Actualizar estado de la conversación a idle
+  await client.graphql({
+    query: updateConversation,
+    variables: {
+      input: {
+        id: conversation.id,
+        state: "idle",
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  });
+
+  // Enviar mensaje de bienvenida y menú
+  await sendText(
+    phoneNumber,
+    `✅ ¡Sesión iniciada correctamente! Bienvenido, ${nombre}.`
+  );
+
+  await sendText(
+    phoneNumber,
+    "¿Qué deseas hacer?\n\n1️⃣ Ver juegos disponibles\n2️⃣ Hacer una apuesta\n3️⃣ Ver mis apuestas\n4️⃣ Cerrar sesión\n\nEscribe el número de la opción."
+  );
 }
