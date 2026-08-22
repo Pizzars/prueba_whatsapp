@@ -3,23 +3,35 @@
 import { useState } from "react";
 import { formatCurrency } from "@/app/lib/formatCurrency";
 
+export interface BetResult {
+  betId: string;
+  number: string;
+  amount: number;
+  drawName: string;
+  gameName: string;
+  gameIcon: string;
+}
+
 interface BetFormProps {
   selectedDraw: { id: string; name: string } | null;
   gameId: string;
+  gameName: string;
+  gameIcon: string;
   token: string;
-  onBetPlaced: () => void;
+  onBetSuccess: (result: BetResult) => void;
 }
 
 export default function BetForm({
   selectedDraw,
   gameId,
+  gameName,
+  gameIcon,
   token,
-  onBetPlaced,
+  onBetSuccess,
 }: BetFormProps) {
   const [number, setNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
   const isNumberValid = /^\d{4}$/.test(number);
@@ -32,7 +44,6 @@ export default function BetForm({
 
     setLoading(true);
     setError("");
-    setSuccess(false);
 
     try {
       const response = await fetch("/api/bets", {
@@ -58,13 +69,14 @@ export default function BetForm({
         return;
       }
 
-      setSuccess(true);
-      setNumber("");
-      setAmount("");
-      onBetPlaced();
-
-      // Limpiar éxito después de 3s
-      setTimeout(() => setSuccess(false), 3000);
+      onBetSuccess({
+        betId: data.betId,
+        number,
+        amount: numAmount,
+        drawName: selectedDraw.name,
+        gameName,
+        gameIcon,
+      });
     } catch {
       setError("Error de conexión. Intenta de nuevo.");
     } finally {
@@ -143,13 +155,6 @@ export default function BetForm({
       {error && (
         <p className="rounded-lg bg-red-900/30 px-3 py-2 text-sm text-red-400">
           {error}
-        </p>
-      )}
-
-      {/* Éxito */}
-      {success && (
-        <p className="rounded-lg bg-green-900/30 px-3 py-2 text-sm text-green-400">
-          ✅ Apuesta registrada exitosamente
         </p>
       )}
 

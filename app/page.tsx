@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import GameCard from "@/app/components/GameCard";
 import DrawList from "@/app/components/DrawList";
-import BetForm from "@/app/components/BetForm";
+import BetForm, { BetResult } from "@/app/components/BetForm";
 import BetHistory from "@/app/components/BetHistory";
+import { formatCurrency } from "@/app/lib/formatCurrency";
 
 interface Game {
   id: string;
@@ -53,6 +54,7 @@ export default function Dashboard() {
   const [loadingDraws, setLoadingDraws] = useState(false);
   const [loadingBets, setLoadingBets] = useState(true);
   const [validating, setValidating] = useState(true);
+  const [betResult, setBetResult] = useState<BetResult | null>(null);
 
   // Validar sesión al cargar
   useEffect(() => {
@@ -152,6 +154,18 @@ export default function Dashboard() {
     setDraws([]);
   }
 
+  function handleBetSuccess(result: BetResult) {
+    setBetResult(result);
+    loadBets();
+  }
+
+  function handleBackToHome() {
+    setBetResult(null);
+    setSelectedGame(null);
+    setSelectedDraw(null);
+    setDraws([]);
+  }
+
   function handleLogout() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -162,6 +176,55 @@ export default function Dashboard() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-zinc-900 to-black">
         <p className="text-zinc-400">Verificando sesión...</p>
+      </div>
+    );
+  }
+
+  // Pantalla de apuesta exitosa
+  if (betResult) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-zinc-900 to-black px-6">
+        <div className="w-full max-w-sm text-center">
+          <div className="text-6xl mb-4">✅</div>
+          <h1 className="text-2xl font-bold text-white mb-2">
+            Apuesta exitosa
+          </h1>
+          <p className="text-zinc-400 mb-8">
+            Tu apuesta ha sido registrada correctamente
+          </p>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-left space-y-3 mb-8">
+            <div className="flex justify-between">
+              <span className="text-sm text-zinc-400">Juego</span>
+              <span className="text-sm text-white">
+                {betResult.gameIcon} {betResult.gameName}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-zinc-400">Sorteo</span>
+              <span className="text-sm text-white">{betResult.drawName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-zinc-400">Número</span>
+              <span className="text-sm font-mono text-white">
+                {betResult.number}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-zinc-400">Monto</span>
+              <span className="text-sm font-semibold text-yellow-400">
+                {formatCurrency(betResult.amount)}
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleBackToHome}
+            className="w-full rounded-lg bg-yellow-500 px-4 py-3 font-semibold text-black transition-colors hover:bg-yellow-400"
+          >
+            Volver a juegos
+          </button>
+        </div>
       </div>
     );
   }
@@ -213,7 +276,6 @@ export default function Dashboard() {
         {activeTab === "juegos" && (
           <>
             {!selectedGame ? (
-              // Lista de juegos
               <section>
                 <h2 className="mb-4 text-lg font-semibold text-white">
                   Juegos disponibles
@@ -234,7 +296,6 @@ export default function Dashboard() {
                 )}
               </section>
             ) : (
-              // Juego seleccionado
               <section className="space-y-4">
                 {/* Header del juego seleccionado */}
                 <div className="flex items-center gap-3">
@@ -264,8 +325,10 @@ export default function Dashboard() {
                 <BetForm
                   selectedDraw={selectedDraw}
                   gameId={selectedGame.id}
+                  gameName={selectedGame.name}
+                  gameIcon={selectedGame.icon}
                   token={token!}
-                  onBetPlaced={loadBets}
+                  onBetSuccess={handleBetSuccess}
                 />
               </section>
             )}
