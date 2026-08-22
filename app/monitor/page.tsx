@@ -28,18 +28,24 @@ interface Conversation {
   updatedAt: string | null;
 }
 
+type SessionTab = "active" | "history";
+
 export default function MonitorPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [closeMessage, setCloseMessage] = useState("");
+  const [sessionTab, setSessionTab] = useState<SessionTab>("active");
 
   async function refresh() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin");
+      const historyParam = sessionTab === "history" ? "?history=true" : "";
+      const res = await fetch(`/api/admin${historyParam}`);
       const data = await res.json();
 
       if (data.error) {
@@ -54,6 +60,28 @@ export default function MonitorPage() {
       setError("Error de conexión");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleCloseAll() {
+    if (!confirm("¿Cerrar todas las sesiones activas? Los usuarios serán notificados por WhatsApp.")) {
+      return;
+    }
+    setClosing(true);
+    setCloseMessage("");
+    try {
+      const res = await fetch("/api/admin/close-all", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setCloseMessage(`✅ ${data.message}`);
+        refresh();
+      } else {
+        setCloseMessage(`❌ ${data.error}`);
+      }
+    } catch {
+      setCloseMessage("❌ Error de conexión");
+    } finally {
+      setClosing(false);
     }
   }
 
@@ -91,13 +119,15 @@ export default function MonitorPage() {
     if (state === "idle") return "bg-green-900/50 text-green-400";
     if (state === "new") return "bg-zinc-700/50 text-zinc-300";
     if (state.startsWith("awaiting")) return "bg-yellow-900/50 text-yellow-400";
-    if (state.startsWith("selecting") || state.startsWith("entering")) return "bg-blue-900/50 text-blue-400";
+    if (state.startsWith("selecting") || state.startsWith("entering"))
+      return "bg-blue-900/50 text-blue-400";
     return "bg-zinc-700/50 text-zinc-300";
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-900 to-black px-4 py-8">
       <div className="mx-auto max-w-4xl">
+        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">📊 Monitor</h1>
@@ -105,13 +135,22 @@ export default function MonitorPage() {
               Sesiones y conversaciones de WhatsApp
             </p>
           </div>
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="rounded-lg bg-yellow-500 px-4 py-2 font-semibold text-black transition-colors hover:bg-yellow-400 disabled:opacity-50"
-          >
-            {loading ? "Cargando..." : "Refrescar"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCloseAll}
+              disabled={closing}
+              className="rounded-lg border border-red-700 bg-red-900/20 px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
+            >
+              {closing ? "Cerrando..." : "Cerrar todas"}
+            </button>
+            <button
+              onClick={refresh}
+              disabled={loading}
+              className="rounded-lg bg-yellow-500 px-4 py-2 font-semibold text-black transition-colors hover:bg-yellow-400 disabled:opacity-50"
+            >
+              {loading ? "..." : "Refrescar"}
+            </button>
+          </div>
         </div>
 
         {lastUpdate && (
@@ -123,6 +162,18 @@ export default function MonitorPage() {
         {error && (
           <p className="mb-4 rounded-lg bg-red-900/30 px-3 py-2 text-sm text-red-400">
             {error}
+          </p>
+        )}
+
+        {closeMessage && (
+          <p
+            className={`mb-4 rounded-lg px-3 py-2 text-sm ${
+              closeMessage.startsWith("✅")
+                ? "bg-green-900/30 text-green-400"
+                : "bg-red-900/30 text-red-400"
+            }`}
+          >
+            {closeMessage}
           </p>
         )}
 
@@ -148,7 +199,11 @@ export default function MonitorPage() {
                         📱 {conv.phoneNumber}
                       </p>
                       <div className="mt-1 flex items-center gap-2">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${getStateColor(conv.state)}`}>
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${getStateColor(
+                            conv.state
+                          )}`}
+                        >
                           {getStateLabel(conv.state)}
                         </span>
                         {conv.sessionId && (
@@ -159,7 +214,14 @@ export default function MonitorPage() {
                       </div>
                       {(conv.selectedGame || conv.betNumber) && (
                         <p className="mt-1 text-xs text-zinc-500">
-                          {conv.selectedGame && `🎮 ${conv.selectedGame === "loteria-nacional" ? "Lotería Nacional" : conv.selectedGame === "chance-express" ? "Chance Express" : conv.selectedGame}`}
+                          {conv.selectedGame &&
+                            `🎮 ${
+                              conv.selectedGame === "loteria-nacional"
+                                ? "Lotería Nacional"
+                                : conv.selectedGame === "chance-express"
+                                ? "Chance Express"
+                                : conv.selectedGame
+                            }`}
                           {conv.selectedDraw && ` → 📅 ${conv.selectedDraw}`}
                           {conv.betNumber && ` → 🔢 ${conv.betNumber}`}
                           {conv.betAmount && ` → 💰 $${conv.betAmount}`}
@@ -184,14 +246,45 @@ export default function MonitorPage() {
           )}
         </section>
 
-        {/* Sesiones */}
+        {/* Sesiones - Tabs */}
         <section>
-          <h2 className="mb-3 text-lg font-semibold text-white">
-            🔑 Sesiones ({sessions.length})
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">🔑 Sesiones</h2>
+            <div className="flex gap-1 rounded-lg border border-zinc-800 bg-zinc-900/50 p-0.5">
+              <button
+                onClick={() => {
+                  setSessionTab("active");
+                  setSessions([]);
+                }}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  sessionTab === "active"
+                    ? "bg-yellow-500 text-black"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Activas
+              </button>
+              <button
+                onClick={() => {
+                  setSessionTab("history");
+                  setSessions([]);
+                }}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  sessionTab === "history"
+                    ? "bg-yellow-500 text-black"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Historial
+              </button>
+            </div>
+          </div>
+
           {sessions.length === 0 ? (
             <p className="text-sm text-zinc-500">
-              No hay sesiones. Presiona Refrescar.
+              {sessionTab === "active"
+                ? "No hay sesiones activas. Presiona Refrescar."
+                : "No hay sesiones en el historial. Presiona Refrescar."}
             </p>
           ) : (
             <div className="space-y-2">
@@ -201,7 +294,9 @@ export default function MonitorPage() {
                   <div
                     key={session.id}
                     className={`rounded-lg border p-4 ${
-                      expired
+                      !session.active
+                        ? "border-zinc-700/50 bg-zinc-900/30"
+                        : expired
                         ? "border-red-900/50 bg-red-900/10"
                         : "border-zinc-800 bg-zinc-900/50"
                     }`}
@@ -235,11 +330,15 @@ export default function MonitorPage() {
                               : "bg-green-900/50 text-green-400"
                           }`}
                         >
-                          {!session.active ? "Cerrada" : expired ? "Expirada" : "Activa"}
+                          {!session.active
+                            ? "Cerrada"
+                            : expired
+                            ? "Expirada"
+                            : "Activa"}
                         </span>
                         <p className="mt-1 text-xs text-zinc-500">
                           {!session.active
-                            ? "Sesión cerrada manualmente"
+                            ? "Sesión cerrada"
                             : expired
                             ? "Tiempo agotado"
                             : `Expira en ${timeRemaining(session.expiresAt)}`}

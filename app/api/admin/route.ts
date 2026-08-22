@@ -4,14 +4,20 @@ import { listSessions, listConversations } from "@/app/lib/graphql/queries";
 
 /**
  * GET /api/admin — Retorna sesiones y conversaciones para monitoreo
- * Sin validación de sesión (es un endpoint admin para la demo)
+ * Query param ?history=true para ver sesiones inactivas
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Obtener sesiones
+    const { searchParams } = new URL(request.url);
+    const showHistory = searchParams.get("history") === "true";
+
+    // Obtener sesiones según filtro
     const sessionsResult = await client.graphql({
       query: listSessions,
-      variables: { limit: 50 },
+      variables: {
+        filter: { active: { eq: !showHistory } },
+        limit: 50,
+      },
     });
     const sessions = (
       sessionsResult as {
