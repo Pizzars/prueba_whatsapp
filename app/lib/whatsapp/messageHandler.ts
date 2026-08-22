@@ -140,9 +140,14 @@ export async function handleIncomingMessage(
       await handleAwaitingLogin(phoneNumber, conversation!, payload);
       break;
 
-    case "awaiting_credentials":
-      // Esperando documento + contraseña por WhatsApp
-      await handleCredentials(phoneNumber, conversation!, payload);
+    case "awaiting_documento":
+      // Esperando número de documento
+      await handleDocumento(phoneNumber, conversation!, payload);
+      break;
+
+    case "awaiting_password":
+      // Esperando contraseña
+      await handlePassword(phoneNumber, conversation!, payload);
       break;
 
     case "idle":
@@ -295,56 +300,75 @@ async function handleLocation(
   const { latitude, longitude } = payload.location;
 
   await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "awaiting_credentials",
+    state: "awaiting_documento",
     betNumber: String(latitude),
     betAmount: longitude,
   });
 
-  // TODO: Cuando el flow test_login esté configurado, enviar el flow aquí
-  // Por ahora, pedir credenciales por texto
   await sendText(
     phoneNumber,
-    "✅ Ubicación recibida.\n\n📝 Ahora ingresa tu *documento* y *contraseña* separados por un espacio.\n\nEjemplo: `1023456789 1234567890`"
+    "✅ Ubicación recibida.\n\n📝 Ahora ingresa tu *número de documento* (10 dígitos):"
   );
 }
 
-// --- Awaiting credentials (login by WhatsApp) ---
+// --- Awaiting documento ---
 
-async function handleCredentials(
+async function handleDocumento(
   phoneNumber: string,
   conversation: Conversation,
   payload: MessagePayload
 ): Promise<void> {
   const text = payload.type === "text" ? payload.text || "" : "";
+  const documento = text.trim();
 
-  // Si no es texto, recordar el formato
-  if (!text.trim()) {
+  if (!/^\d{10}$/.test(documento)) {
     await sendText(
       phoneNumber,
-      "📝 Ingresa tu *documento* y *contraseña* separados por un espacio.\n\nEjemplo: `1023456789 1234567890`"
+      "❌ El documento debe ser de 10 dígitos. Intenta de nuevo:"
     );
     return;
   }
 
-  // Intentar parsear documento + contraseña
-  const parts = text.trim().split(/\s+/);
-  if (parts.length < 2) {
-    await sendText(
-      phoneNumber,
-      "❌ Formato incorrecto. Envía tu documento y contraseña separados por un espacio.\n\nEjemplo: `1023456789 1234567890`"
-    );
+  // Guardar documento temporalmente en selectedGame (reutilizamos el campo)
+  await createOrUpdateConversation(conversation, phoneNumber, {
+    state: "awaiting_password",
+    selectedGame: documento,
+  });
+
+  await sendText(
+    phoneNumber,
+    `📋 Documento: *${documento}*\n\n🔒 Ahora ingresa tu *contraseña*:`
+  );
+}
+
+// --- Awaiting password ---
+
+async function handlePassword(
+  phoneNumber: string,
+  conversation: Conversation,
+  payload: MessagePayload
+): Promise<void> {
+  const text = payload.type === "text" ? payload.text || "" : "";
+  const password = text.trim();
+
+  if (!password) {
+    await sendText(phoneNumber, "🔒 Ingresa tu contraseña:");
     return;
   }
 
-  const [documento, password] = parts;
+  const documento = conversation.selectedGame || "";
 
   // Validar credenciales
   const user = validateCredentials(documento, password);
   if (!user) {
     await sendText(
       phoneNumber,
-      "❌ Documento o contraseña incorrectos. Intenta de nuevo.\n\nEjemplo: `1023456789 1234567890`"
+      "❌ Documento o contraseña incorrectos.\n\nVamos a intentar de nuevo. Ingresa tu *número de documento* (10 dígitos):"
     );
+    await createOrUpdateConversation(conversation, phoneNumber, {
+      state: "awaiting_documento",
+      selectedGame: null,
+    });
     return;
   }
 
@@ -368,6 +392,7 @@ async function handleCredentials(
     state: "idle",
     betNumber: null,
     betAmount: null,
+    selectedGame: null,
   });
 
   await sendText(
