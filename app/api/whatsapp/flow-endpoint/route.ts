@@ -133,7 +133,7 @@ function processFlowRequest(body: { action: string; screen?: string; data?: Reco
   if (body.action === "INIT") {
     return {
       version: "3.0",
-      screen: "LOGIN_SCREEN",
+      screen: "SIGN_IN",
       data: {
         error_message: "",
       },
@@ -149,7 +149,7 @@ function processFlowRequest(body: { action: string; screen?: string; data?: Reco
     if (!user) {
       return {
         version: "3.0",
-        screen: "LOGIN_SCREEN",
+        screen: "SIGN_IN",
         data: {
           error_message: "Documento o contraseña incorrectos. Intenta de nuevo.",
         },
@@ -159,11 +159,10 @@ function processFlowRequest(body: { action: string; screen?: string; data?: Reco
     // Login exitoso
     return {
       version: "3.0",
-      screen: "SUCCESS_SCREEN",
+      screen: "SUCCESS",
       data: {
         nombre: user.nombre,
-        documento: user.documento,
-        message: `¡Bienvenido, ${user.nombre}!`,
+        message: "Sesión iniciada correctamente",
       },
     };
   }
