@@ -69,6 +69,31 @@ export default function MonitorPage() {
     return `${hours}h ${mins}m`;
   }
 
+  function getStateLabel(state: string): string {
+    const labels: Record<string, string> = {
+      new: "🆕 Nuevo usuario",
+      choosing_login_method: "🔀 Eligiendo método de login",
+      awaiting_location: "📍 Esperando ubicación",
+      awaiting_login: "🔗 Esperando login web",
+      awaiting_documento: "📋 Esperando documento",
+      awaiting_password: "🔒 Esperando contraseña",
+      idle: "✅ Menú principal",
+      selecting_game: "🎮 Seleccionando juego",
+      selecting_draw: "📅 Seleccionando sorteo",
+      entering_number: "🔢 Ingresando número",
+      entering_amount: "💰 Ingresando monto",
+    };
+    return labels[state] || state;
+  }
+
+  function getStateColor(state: string): string {
+    if (state === "idle") return "bg-green-900/50 text-green-400";
+    if (state === "new") return "bg-zinc-700/50 text-zinc-300";
+    if (state.startsWith("awaiting")) return "bg-yellow-900/50 text-yellow-400";
+    if (state.startsWith("selecting") || state.startsWith("entering")) return "bg-blue-900/50 text-blue-400";
+    return "bg-zinc-700/50 text-zinc-300";
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-900 to-black px-4 py-8">
       <div className="mx-auto max-w-4xl">
@@ -117,26 +142,26 @@ export default function MonitorPage() {
                   className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4"
                 >
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-white">
                         📱 {conv.phoneNumber}
                       </p>
-                      <p className="text-xs text-zinc-500">
-                        Estado:{" "}
-                        <span className="font-mono text-zinc-300">
-                          {conv.state}
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${getStateColor(conv.state)}`}>
+                          {getStateLabel(conv.state)}
                         </span>
                         {conv.sessionId && (
-                          <span className="ml-2">
-                            | Session: {conv.sessionId.slice(0, 8)}...
+                          <span className="text-xs text-zinc-600">
+                            Session: {conv.sessionId.slice(0, 8)}...
                           </span>
                         )}
-                      </p>
-                      {conv.selectedGame && (
-                        <p className="text-xs text-zinc-500">
-                          Juego: {conv.selectedGame} | Sorteo:{" "}
-                          {conv.selectedDraw || "-"} | Número:{" "}
-                          {conv.betNumber || "-"}
+                      </div>
+                      {(conv.selectedGame || conv.betNumber) && (
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {conv.selectedGame && `🎮 ${conv.selectedGame === "loteria-nacional" ? "Lotería Nacional" : conv.selectedGame === "chance-express" ? "Chance Express" : conv.selectedGame}`}
+                          {conv.selectedDraw && ` → 📅 ${conv.selectedDraw}`}
+                          {conv.betNumber && ` → 🔢 ${conv.betNumber}`}
+                          {conv.betAmount && ` → 💰 $${conv.betAmount}`}
                         </p>
                       )}
                     </div>
@@ -147,6 +172,7 @@ export default function MonitorPage() {
                             month: "short",
                             hour: "2-digit",
                             minute: "2-digit",
+                            second: "2-digit",
                           })
                         : "-"}
                     </span>

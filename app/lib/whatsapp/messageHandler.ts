@@ -171,7 +171,14 @@ export async function handleIncomingMessage(
       break;
 
     default:
-      await handleNewUser(phoneNumber, conversation);
+      // Estado desconocido — ofrecer opciones sin saludo duplicado
+      await sendButtons(phoneNumber, "¿Cómo deseas continuar?", [
+        { id: "login_web", title: "Ingresar con URL" },
+        { id: "login_whatsapp", title: "Usuario y contraseña" },
+      ]);
+      await createOrUpdateConversation(conversation, phoneNumber, {
+        state: "choosing_login_method",
+      });
       break;
   }
 }
@@ -276,7 +283,6 @@ async function handleChooseLoginMethod(
     { id: "login_whatsapp", title: "Usuario y contraseña" },
   ]);
 }
-
 // --- Location flow ---
 
 async function handleLocation(
@@ -411,7 +417,14 @@ async function handleAwaitingLogin(
   payload: MessagePayload
 ): Promise<void> {
   if (!conversation.sessionId) {
-    await handleNewUser(phoneNumber, conversation);
+    // No debería pasar, pero por seguridad redirigir a opciones
+    await sendButtons(phoneNumber, "¿Cómo deseas iniciar sesión?", [
+      { id: "login_web", title: "Ingresar con URL" },
+      { id: "login_whatsapp", title: "Usuario y contraseña" },
+    ]);
+    await createOrUpdateConversation(conversation, phoneNumber, {
+      state: "choosing_login_method",
+    });
     return;
   }
 
