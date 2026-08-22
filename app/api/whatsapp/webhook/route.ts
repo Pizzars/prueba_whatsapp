@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleIncomingMessage } from "@/app/lib/whatsapp/messageHandler";
 
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "";
+const VERIFY_TOKEN = process.env.NEXT_PUBLIC_WHATSAPP_VERIFY_TOKEN || "";
 
 /**
  * GET: Verificación del webhook por Meta
