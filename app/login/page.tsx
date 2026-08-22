@@ -9,13 +9,16 @@ function LoginForm() {
   const sessionId = searchParams.get("session");
 
   const [documento, setDocumento] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const isValidDocumento = /^\d{10}$/.test(documento);
+  const isValidPassword = password.length > 0;
+  const canLogin = isValidDocumento && isValidPassword && !loading;
 
   async function handleLogin() {
-    if (!isValidDocumento) return;
+    if (!canLogin) return;
 
     setLoading(true);
     setError("");
@@ -39,6 +42,7 @@ function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           documento,
+          password,
           latitude,
           longitude,
           sessionId: sessionId || undefined,
@@ -112,6 +116,21 @@ function LoginForm() {
             {documento.length}/10 dígitos
           </p>
 
+          <label
+            htmlFor="password"
+            className="mb-2 mt-4 block text-sm font-medium text-zinc-300"
+          >
+            Contraseña
+          </label>
+          <input
+            id="password"
+            type="password"
+            placeholder="Ingresa tu contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-white placeholder-zinc-500 focus:border-yellow-500 focus:outline-none focus:ring-1 focus:ring-yellow-500"
+          />
+
           {error && (
             <p className="mt-3 rounded-lg bg-red-900/30 px-3 py-2 text-sm text-red-400">
               {error}
@@ -120,7 +139,7 @@ function LoginForm() {
 
           <button
             onClick={handleLogin}
-            disabled={!isValidDocumento || loading}
+            disabled={!canLogin}
             className="mt-4 w-full rounded-lg bg-yellow-500 px-4 py-3 font-semibold text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Iniciando sesión..." : "Iniciar Sesión"}

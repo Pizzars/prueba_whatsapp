@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { findUserByDocumento } from "@/app/lib/users";
+import { validateCredentials } from "@/app/lib/users";
 import { createNewSession } from "@/app/lib/sessions";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { documento, latitude, longitude, sessionId } = body;
+    const { documento, password, latitude, longitude, sessionId } = body;
 
     // Validar que venga el documento
     if (!documento || typeof documento !== "string") {
@@ -23,11 +23,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validar que el usuario exista
-    const user = findUserByDocumento(documento);
+    // Validar contraseña
+    if (!password || typeof password !== "string") {
+      return NextResponse.json(
+        { success: false, error: "Contraseña es requerida" },
+        { status: 400 }
+      );
+    }
+
+    // Validar credenciales
+    const user = validateCredentials(documento, password);
     if (!user) {
       return NextResponse.json(
-        { success: false, error: "Usuario no encontrado" },
+        { success: false, error: "Documento o contraseña incorrectos" },
         { status: 401 }
       );
     }
