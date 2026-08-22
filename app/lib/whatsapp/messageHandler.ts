@@ -10,6 +10,7 @@ import {
   validateSession,
   getSessionBySessionId,
   associatePhoneNumber,
+  deactivateSession,
 } from "@/app/lib/sessions";
 import { validateCredentials } from "@/app/lib/users";
 import { generateDraws, paginateDraws } from "@/app/lib/draws";
@@ -199,6 +200,11 @@ async function handleTerminar(
   phoneNumber: string,
   conversation: Conversation | null
 ): Promise<void> {
+  // Desactivar sesión si existe
+  if (conversation?.sessionId) {
+    await deactivateSession(conversation.sessionId);
+  }
+
   await createOrUpdateConversation(conversation, phoneNumber, {
     state: "new",
     sessionId: null,
@@ -803,6 +809,11 @@ async function handleLogout(
   phoneNumber: string,
   conversation: Conversation
 ): Promise<void> {
+  // Desactivar la sesión en DynamoDB
+  if (conversation.sessionId) {
+    await deactivateSession(conversation.sessionId);
+  }
+
   await createOrUpdateConversation(conversation, phoneNumber, {
     state: "new",
     sessionId: null,

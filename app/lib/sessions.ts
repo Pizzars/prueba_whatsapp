@@ -28,7 +28,7 @@ export async function createNewSession(data: CreateSessionInput): Promise<Sessio
   const token = crypto.randomUUID();
   const sessionId = data.sessionId || crypto.randomUUID();
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // +24h
+  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000); // +1h
 
   const input = {
     sessionId,
@@ -106,6 +106,23 @@ export async function associatePhoneNumber(sessionId: string, phoneNumber: strin
       input: {
         id: session.id,
         phoneNumber,
+      },
+    },
+  });
+
+  return (result as { data: { updateSession: Session } }).data.updateSession;
+}
+
+export async function deactivateSession(sessionId: string): Promise<Session | null> {
+  const session = await getSessionBySessionId(sessionId);
+  if (!session) return null;
+
+  const result = await client.graphql({
+    query: updateSessionMutation,
+    variables: {
+      input: {
+        id: session.id,
+        active: false,
       },
     },
   });

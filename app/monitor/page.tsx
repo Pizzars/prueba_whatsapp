@@ -63,9 +63,10 @@ export default function MonitorPage() {
 
   function timeRemaining(expiresAt: string): string {
     const diff = new Date(expiresAt).getTime() - Date.now();
-    if (diff <= 0) return "Expirada";
+    if (diff <= 0) return "0m";
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours === 0) return `${mins}m`;
     return `${hours}h ${mins}m`;
   }
 
@@ -227,15 +228,30 @@ export default function MonitorPage() {
                       <div className="text-right">
                         <span
                           className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                            expired
+                            !session.active
+                              ? "bg-zinc-700/50 text-zinc-400"
+                              : expired
                               ? "bg-red-900/50 text-red-400"
                               : "bg-green-900/50 text-green-400"
                           }`}
                         >
-                          {expired ? "Expirada" : "Activa"}
+                          {!session.active ? "Cerrada" : expired ? "Expirada" : "Activa"}
                         </span>
                         <p className="mt-1 text-xs text-zinc-500">
-                          {timeRemaining(session.expiresAt)}
+                          {!session.active
+                            ? "Sesión cerrada manualmente"
+                            : expired
+                            ? "Tiempo agotado"
+                            : `Expira en ${timeRemaining(session.expiresAt)}`}
+                        </p>
+                        <p className="text-xs text-zinc-600">
+                          Vigencia hasta:{" "}
+                          {new Date(session.expiresAt).toLocaleString("es-CO", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </p>
                         <p className="text-xs text-zinc-600">
                           Creada:{" "}
