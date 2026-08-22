@@ -21,6 +21,10 @@ function SuccessContent() {
 
         <a
           href="https://wa.me/"
+          onClick={() => {
+            // Intenta cerrar la pestaña después de redirigir
+            setTimeout(() => window.close(), 500);
+          }}
           className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-green-500"
         >
           <svg
