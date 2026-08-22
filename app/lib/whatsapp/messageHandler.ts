@@ -162,9 +162,24 @@ export async function handleIncomingMessage(
         : false;
 
       if (!hasSession) {
-        // Sesión expirada, reiniciar
-        await sendText(phoneNumber, "⚠️ Tu sesión ha expirado. Vamos a iniciar de nuevo.");
-        await handleNewUser(phoneNumber, conversation);
+        // Sesión expirada, pedir login nuevamente
+        await sendText(phoneNumber, "⚠️ Tu sesión ha expirado. Necesitas iniciar sesión nuevamente.");
+        await sendButtons(
+          phoneNumber,
+          "¿Cómo deseas iniciar sesión?",
+          [
+            { id: "login_web", title: "Ingresar con URL" },
+            { id: "login_whatsapp", title: "Usuario y contraseña" },
+          ]
+        );
+        await createOrUpdateConversation(conversation, phoneNumber, {
+          state: "choosing_login_method",
+          sessionId: null,
+          selectedGame: null,
+          selectedDraw: null,
+          betNumber: null,
+          betAmount: null,
+        });
         return;
       }
 
@@ -216,10 +231,8 @@ async function handleTerminar(
 
   await sendText(
     phoneNumber,
-    "🔄 Sesión finalizada. Empecemos de nuevo."
+    "� ¡Gracias por usar la Plataforma de Apuestas! Tu sesión ha sido cerrada.\n\n¡Te esperamos pronto! Escribe cualquier mensaje cuando desees volver. 🎰"
   );
-
-  await handleNewUser(phoneNumber, conversation ? { ...conversation, state: "new", sessionId: null } : null);
 }
 
 // --- New user flow ---
@@ -825,6 +838,6 @@ async function handleLogout(
 
   await sendText(
     phoneNumber,
-    "👋 Sesión cerrada. Escribe cualquier mensaje para iniciar de nuevo."
+    "👋 ¡Gracias por usar la Plataforma de Apuestas! Tu sesión ha sido cerrada.\n\n¡Te esperamos pronto! Escribe cualquier mensaje cuando desees volver. 🎰"
   );
 }
