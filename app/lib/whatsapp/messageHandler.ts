@@ -111,6 +111,13 @@ export async function handleIncomingMessage(
   const conversation = await getConversation(phoneNumber);
   const state = conversation?.state || "new";
 
+  // Comando global: "terminar" reinicia todo sin importar el estado
+  const text = payload.type === "text" ? payload.text || "" : "";
+  if (text.trim().toLowerCase() === "terminar") {
+    await handleTerminar(phoneNumber, conversation);
+    return;
+  }
+
   // Flujo según estado
   switch (state) {
     case "new":
@@ -172,6 +179,29 @@ async function checkActiveSession(sessionId: string): Promise<boolean> {
   if (!session.active) return false;
   if (new Date(session.expiresAt) < new Date()) return false;
   return true;
+}
+
+// --- Terminar (reset global) ---
+
+async function handleTerminar(
+  phoneNumber: string,
+  conversation: Conversation | null
+): Promise<void> {
+  await createOrUpdateConversation(conversation, phoneNumber, {
+    state: "new",
+    sessionId: null,
+    selectedGame: null,
+    selectedDraw: null,
+    betNumber: null,
+    betAmount: null,
+  });
+
+  await sendText(
+    phoneNumber,
+    "🔄 Sesión finalizada. Empecemos de nuevo."
+  );
+
+  await handleNewUser(phoneNumber, conversation ? { ...conversation, state: "new", sessionId: null } : null);
 }
 
 // --- New user flow ---
