@@ -1,9 +1,7 @@
-const WHATSAPP_TOKEN = process.env.NEXT_PUBLIC_WHATSAPP_TOKEN || "";
-const PHONE_NUMBER_ID = process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID || "";
-const API_URL = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
+import { WHATSAPP_TOKEN, WHATSAPP_API_URL } from "@/app/lib/constants";
 
 async function sendRequest(body: object) {
-  const response = await fetch(API_URL, {
+  const response = await fetch(WHATSAPP_API_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${WHATSAPP_TOKEN}`,
@@ -29,6 +27,27 @@ export async function sendText(phoneNumber: string, message: string) {
     to: phoneNumber,
     type: "text",
     text: { body: message },
+  });
+}
+
+/**
+ * Enviar solicitud de ubicación al usuario
+ */
+export async function sendLocationRequest(phoneNumber: string, bodyText: string) {
+  return sendRequest({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    type: "interactive",
+    to: phoneNumber,
+    interactive: {
+      type: "location_request_message",
+      body: {
+        text: bodyText,
+      },
+      action: {
+        name: "send_location",
+      },
+    },
   });
 }
 

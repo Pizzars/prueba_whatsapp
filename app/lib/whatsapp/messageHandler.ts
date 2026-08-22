@@ -1,4 +1,4 @@
-import { sendText } from "./sendMessage";
+import { sendText, sendLocationRequest, sendButtons } from "./sendMessage";
 import { client } from "@/app/lib/amplify-server";
 import { listConversations } from "@/app/lib/graphql/queries";
 import {
@@ -6,16 +6,31 @@ import {
   updateConversation,
 } from "@/app/lib/graphql/mutations";
 import {
+  createNewSession,
   validateSession,
   getSessionBySessionId,
   associatePhoneNumber,
 } from "@/app/lib/sessions";
+import { validateCredentials } from "@/app/lib/users";
 import { generateDraws, paginateDraws } from "@/app/lib/draws";
 import { formatCurrency } from "@/app/lib/formatCurrency";
 import { listGames, listBets } from "@/app/lib/graphql/queries";
 import { createBet } from "@/app/lib/graphql/mutations";
+import { APP_URL } from "@/app/lib/constants";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+// --- Types ---
+
+export interface MessagePayload {
+  type: string;
+  text?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+    name?: string;
+  };
+  interactive?: { id: string; title: string };
+}
 
 interface Conversation {
   id: string;
@@ -91,43 +106,55 @@ async function createOrUpdateConversation(
 
 export async function handleIncomingMessage(
   phoneNumber: string,
-  text: string
+  payload: MessagePayload
 ): Promise<void> {
   const conversation = await getConversation(phoneNumber);
-  const state = conversation?.state || "idle";
+  const state = conversation?.state || "new";
 
-  // Check if user has an active session
-  const hasSession = conversation?.sessionId
-    ? await checkActiveSession(conversation.sessionId)
-    : false;
-
-  if (!hasSession) {
-    await handleNoSession(phoneNumber, conversation, text);
-    return;
-  }
-
-  // User has active session — route based on state
+  // Flujo según estado
   switch (state) {
+    case "new":
+      // Primera vez - pedir ubicación
+      await handleNewUser(phoneNumber, conversation);
+      break;
+
+    case "awaiting_location":
+      // Esperando ubicación
+      await handleLocation(phoneNumber, conversation!, payload);
+      break;
+
+    case "awaiting_login":
+      // Esperando que inicie sesión via web URL
+      await handleAwaitingLogin(phoneNumber, conversation!, payload);
+      break;
+
+    case "awaiting_credentials":
+      // Esperando documento + contraseña por WhatsApp
+      await handleCredentials(phoneNumber, conversation!, payload);
+      break;
+
     case "idle":
-      await handleMenu(phoneNumber, conversation!, text);
-      break;
     case "selecting_game":
-      await handleSelectGame(phoneNumber, conversation!, text);
-      break;
     case "selecting_draw":
-      await handleSelectDraw(phoneNumber, conversation!, text);
-      break;
     case "entering_number":
-      await handleEnterNumber(phoneNumber, conversation!, text);
-      break;
     case "entering_amount":
-      await handleEnterAmount(phoneNumber, conversation!, text);
+      // Tiene sesión activa - verificar antes
+      const hasSession = conversation?.sessionId
+        ? await checkActiveSession(conversation.sessionId)
+        : false;
+
+      if (!hasSession) {
+        // Sesión expirada, reiniciar
+        await sendText(phoneNumber, "⚠️ Tu sesión ha expirado. Vamos a iniciar de nuevo.");
+        await handleNewUser(phoneNumber, conversation);
+        return;
+      }
+
+      await handleAuthenticatedFlow(phoneNumber, conversation!, state, payload);
       break;
+
     default:
-      await sendMainMenu(phoneNumber);
-      await createOrUpdateConversation(conversation, phoneNumber, {
-        state: "idle",
-      });
+      await handleNewUser(phoneNumber, conversation);
       break;
   }
 }
@@ -142,66 +169,237 @@ async function checkActiveSession(sessionId: string): Promise<boolean> {
   return true;
 }
 
-// --- No session flow ---
+// --- New user flow ---
 
-async function handleNoSession(
-  phoneNumber: string,
-  conversation: Conversation | null,
-  text: string
-): Promise<void> {
-  // If awaiting_login, check if session was created
-  if (conversation?.state === "awaiting_login" && conversation.sessionId) {
-    const session = await getSessionBySessionId(conversation.sessionId);
-    if (session && session.active) {
-      // Session created via web login — associate phone number
-      await associatePhoneNumber(conversation.sessionId, phoneNumber);
-      await sendText(
-        phoneNumber,
-        "✅ Sesión iniciada correctamente. ¡Bienvenido!"
-      );
-      await sendMainMenu(phoneNumber);
-      await createOrUpdateConversation(conversation, phoneNumber, {
-        state: "idle",
-      });
-      return;
-    }
-
-    // Still waiting
-    await sendText(
-      phoneNumber,
-      "⏳ Aún no has iniciado sesión. Abre el enlace que te envié para iniciar sesión desde la web.\n\nSi necesitas un nuevo enlace, escribe *nuevo*."
-    );
-
-    if (text.toLowerCase() === "nuevo") {
-      await sendLoginLink(phoneNumber, conversation);
-    }
-    return;
-  }
-
-  // First contact or no session — send login link
-  await sendText(
-    phoneNumber,
-    "¡Hola! 👋 Para usar la plataforma de apuestas necesitas iniciar sesión.\n\nTe enviaré un enlace para que ingreses con tu documento."
-  );
-  await sendLoginLink(phoneNumber, conversation);
-}
-
-async function sendLoginLink(
+async function handleNewUser(
   phoneNumber: string,
   conversation: Conversation | null
 ): Promise<void> {
-  const sessionId = crypto.randomUUID();
-  const loginUrl = `${APP_URL}/login?session=${sessionId}`;
+  await sendText(
+    phoneNumber,
+    "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\nPara comenzar, necesito tu ubicación."
+  );
+
+  await sendLocationRequest(
+    phoneNumber,
+    "📍 Comparte tu ubicación para continuar:"
+  );
 
   await createOrUpdateConversation(conversation, phoneNumber, {
-    sessionId,
-    state: "awaiting_login",
+    state: "awaiting_location",
+  });
+}
+
+// --- Location flow ---
+
+async function handleLocation(
+  phoneNumber: string,
+  conversation: Conversation,
+  payload: MessagePayload
+): Promise<void> {
+  if (payload.type !== "location" || !payload.location) {
+    await sendText(
+      phoneNumber,
+      "📍 Necesito tu ubicación para continuar. Usa el botón de compartir ubicación."
+    );
+    await sendLocationRequest(
+      phoneNumber,
+      "📍 Comparte tu ubicación:"
+    );
+    return;
+  }
+
+  // Guardar ubicación temporalmente (la usaremos al crear la sesión)
+  // La guardamos en el campo betNumber/betAmount temporalmente como lat/lng
+  const { latitude, longitude } = payload.location;
+
+  await createOrUpdateConversation(conversation, phoneNumber, {
+    state: "awaiting_credentials",
+    betNumber: String(latitude),
+    betAmount: longitude, // Reutilizamos este campo para guardar lng
   });
 
   await sendText(
     phoneNumber,
-    `🔗 Inicia sesión aquí:\n${loginUrl}\n\nDespués de iniciar sesión, vuelve aquí y escribe cualquier mensaje.`
+    "✅ Ubicación recibida.\n\n¿Cómo deseas iniciar sesión?"
   );
+
+  await sendButtons(phoneNumber, "Elige una opción:", [
+    { id: "login_whatsapp", title: "Iniciar por aquí" },
+    { id: "login_web", title: "Iniciar por Web" },
+  ]);
+}
+
+// --- Awaiting credentials (login by WhatsApp) ---
+
+async function handleCredentials(
+  phoneNumber: string,
+  conversation: Conversation,
+  payload: MessagePayload
+): Promise<void> {
+  const text = payload.type === "text" ? payload.text || "" : "";
+  const interactiveId = payload.type === "interactive" ? payload.interactive?.id || "" : "";
+
+  // Si seleccionó login por web
+  if (interactiveId === "login_web") {
+    const sessionId = crypto.randomUUID();
+    const loginUrl = `${APP_URL}/login?session=${sessionId}`;
+
+    await createOrUpdateConversation(conversation, phoneNumber, {
+      sessionId,
+      state: "awaiting_login",
+    });
+
+    await sendText(
+      phoneNumber,
+      `🔗 Inicia sesión aquí:\n${loginUrl}\n\nDespués de iniciar sesión, vuelve aquí y escribe cualquier mensaje.`
+    );
+    return;
+  }
+
+  // Si seleccionó login por WhatsApp
+  if (interactiveId === "login_whatsapp") {
+    await sendText(
+      phoneNumber,
+      "📝 Ingresa tu *documento* y *contraseña* separados por un espacio.\n\nEjemplo: `1023456789 1234567890`"
+    );
+    return;
+  }
+
+  // Intentar parsear documento + contraseña
+  const parts = text.trim().split(/\s+/);
+  if (parts.length < 2) {
+    await sendText(
+      phoneNumber,
+      "❌ Formato incorrecto. Envía tu documento y contraseña separados por un espacio.\n\nEjemplo: `1023456789 1234567890`"
+    );
+    return;
+  }
+
+  const [documento, password] = parts;
+
+  // Validar credenciales
+  const user = validateCredentials(documento, password);
+  if (!user) {
+    await sendText(
+      phoneNumber,
+      "❌ Documento o contraseña incorrectos. Intenta de nuevo.\n\nEjemplo: `1023456789 1234567890`"
+    );
+    return;
+  }
+
+  // Crear sesión con la ubicación guardada
+  const latitude = parseFloat(conversation.betNumber || "0");
+  const longitude = conversation.betAmount || 0;
+
+  const session = await createNewSession({
+    documento: user.documento,
+    nombre: user.nombre,
+    latitude,
+    longitude,
+  });
+
+  // Asociar phone number
+  await associatePhoneNumber(session.sessionId, phoneNumber);
+
+  // Actualizar conversación
+  await createOrUpdateConversation(conversation, phoneNumber, {
+    sessionId: session.sessionId,
+    state: "idle",
+    betNumber: null,
+    betAmount: null,
+  });
+
+  await sendText(
+    phoneNumber,
+    `✅ ¡Bienvenido, ${user.nombre}! Tu sesión está activa.`
+  );
+
+  await sendMainMenu(phoneNumber);
+}
+
+// --- Awaiting web login ---
+
+async function handleAwaitingLogin(
+  phoneNumber: string,
+  conversation: Conversation,
+  payload: MessagePayload
+): Promise<void> {
+  if (!conversation.sessionId) {
+    await handleNewUser(phoneNumber, conversation);
+    return;
+  }
+
+  const session = await getSessionBySessionId(conversation.sessionId);
+  if (session && session.active) {
+    await associatePhoneNumber(conversation.sessionId, phoneNumber);
+    await createOrUpdateConversation(conversation, phoneNumber, {
+      state: "idle",
+    });
+    await sendText(
+      phoneNumber,
+      `✅ ¡Sesión iniciada correctamente! Bienvenido, ${session.nombre}.`
+    );
+    await sendMainMenu(phoneNumber);
+    return;
+  }
+
+  const text = payload.type === "text" ? payload.text || "" : "";
+  if (text.toLowerCase() === "nuevo") {
+    await handleNewUser(phoneNumber, conversation);
+    return;
+  }
+
+  await sendText(
+    phoneNumber,
+    "⏳ Aún no has iniciado sesión desde la web. Abre el enlace que te envié.\n\nEscribe *nuevo* para reiniciar el proceso."
+  );
+}
+
+// --- Authenticated flow ---
+
+async function handleAuthenticatedFlow(
+  phoneNumber: string,
+  conversation: Conversation,
+  state: string,
+  payload: MessagePayload
+): Promise<void> {
+  const text = payload.type === "text" ? payload.text || "" : "";
+  const interactiveId = payload.type === "interactive" ? payload.interactive?.id || "" : "";
+
+  // Comando global: "menu" vuelve al menú
+  if (text.toLowerCase() === "menu" || interactiveId === "menu") {
+    await createOrUpdateConversation(conversation, phoneNumber, {
+      state: "idle",
+      selectedGame: null,
+      selectedDraw: null,
+      betNumber: null,
+      betAmount: null,
+    });
+    await sendMainMenu(phoneNumber);
+    return;
+  }
+
+  switch (state) {
+    case "idle":
+      await handleMenu(phoneNumber, conversation, text, interactiveId);
+      break;
+    case "selecting_game":
+      await handleSelectGame(phoneNumber, conversation, text);
+      break;
+    case "selecting_draw":
+      await handleSelectDraw(phoneNumber, conversation, text);
+      break;
+    case "entering_number":
+      await handleEnterNumber(phoneNumber, conversation, text);
+      break;
+    case "entering_amount":
+      await handleEnterAmount(phoneNumber, conversation, text);
+      break;
+    default:
+      await sendMainMenu(phoneNumber);
+      break;
+  }
 }
 
 // --- Menu ---
@@ -216,9 +414,10 @@ async function sendMainMenu(phoneNumber: string): Promise<void> {
 async function handleMenu(
   phoneNumber: string,
   conversation: Conversation,
-  text: string
+  text: string,
+  interactiveId: string
 ): Promise<void> {
-  const option = text.trim();
+  const option = interactiveId || text.trim();
 
   switch (option) {
     case "1":
@@ -406,12 +605,10 @@ async function handleEnterAmount(
     return;
   }
 
-  // Create the bet using the same service logic
   const gameId = conversation.selectedGame || "";
   const drawId = conversation.selectedDraw || "";
   const betNumber = conversation.betNumber || "";
 
-  // Get draw name
   const draws = generateDraws(gameId);
   const draw = draws.find((d) => d.id === drawId);
   const drawName = draw?.name || "Sorteo";
@@ -434,14 +631,14 @@ async function handleEnterAmount(
     variables: { input },
   });
 
-  const gameName = gameId === "loteria-nacional" ? "🎰 Lotería Nacional" : "⚡ Chance Express";
+  const gameName =
+    gameId === "loteria-nacional" ? "🎰 Lotería Nacional" : "⚡ Chance Express";
 
   await sendText(
     phoneNumber,
     `✅ *Apuesta registrada*\n\n${gameName}\n📅 ${drawName}\n🔢 Número: ${betNumber}\n💰 Monto: ${formatCurrency(amount)}\n\n¡Buena suerte! 🍀`
   );
 
-  // Reset state
   await createOrUpdateConversation(conversation, phoneNumber, {
     state: "idle",
     selectedGame: null,
@@ -510,7 +707,7 @@ async function handleLogout(
   conversation: Conversation
 ): Promise<void> {
   await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "idle",
+    state: "new",
     sessionId: null,
     selectedGame: null,
     selectedDraw: null,
@@ -520,6 +717,6 @@ async function handleLogout(
 
   await sendText(
     phoneNumber,
-    "👋 Sesión cerrada. Para volver a usar la plataforma, escribe cualquier mensaje y te enviaré un nuevo enlace de login."
+    "👋 Sesión cerrada. Escribe cualquier mensaje para iniciar de nuevo."
   );
 }

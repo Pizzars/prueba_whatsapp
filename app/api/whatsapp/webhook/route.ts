@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleIncomingMessage } from "@/app/lib/whatsapp/messageHandler";
-
-const VERIFY_TOKEN = process.env.NEXT_PUBLIC_WHATSAPP_VERIFY_TOKEN || "";
+import { WHATSAPP_VERIFY_TOKEN } from "@/app/lib/constants";
 
 /**
  * GET: Verificación del webhook por Meta
@@ -13,7 +12,7 @@ export async function GET(request: Request) {
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+  if (mode === "subscribe" && token === WHATSAPP_VERIFY_TOKEN) {
     return new Response(challenge, { status: 200 });
   }
 
@@ -38,16 +37,63 @@ export async function POST(request: Request) {
     }
 
     const message = value.messages[0];
-    const phoneNumber = message.from; // Número del remitente
-    const messageText = message.text?.body || "";
+    const phoneNumber = message.from;
+    const messageType = message.type;
 
-    // Procesar el mensaje en background (no bloquear la respuesta)
-    // WhatsApp espera respuesta rápida (< 5s)
-    handleIncomingMessage(phoneNumber, messageText).catch((err) => {
+    // Construir payload según tipo de mensaje
+    let messagePayload: {
+      type: string;
+      text?: string;
+      location?: { latitude: number; longitude: number; address?: string; name?: string };
+      interactive?: { id: string; title: string };
+    };
+
+    switch (messageType) {
+      case "text":
+        messagePayload = {
+          type: "text",
+          text: message.text?.body || "",
+        };
+        break;
+
+      case "location":
+        messagePayload = {
+          type: "location",
+          location: {
+            latitude: message.location.latitude,
+            longitude: message.location.longitude,
+            address: message.location.address,
+            name: message.location.name,
+          },
+        };
+        break;
+
+      case "interactive":
+        // Respuesta a botones o listas
+        const interactiveReply =
+          message.interactive?.button_reply || message.interactive?.list_reply;
+        messagePayload = {
+          type: "interactive",
+          interactive: {
+            id: interactiveReply?.id || "",
+            title: interactiveReply?.title || "",
+          },
+        };
+        break;
+
+      default:
+        messagePayload = {
+          type: "text",
+          text: "",
+        };
+        break;
+    }
+
+    // Procesar el mensaje
+    handleIncomingMessage(phoneNumber, messagePayload).catch((err) => {
       console.error("Error procesando mensaje WhatsApp:", err);
     });
 
-    // Responder 200 inmediatamente
     return NextResponse.json({ status: "ok" });
   } catch (error) {
     console.error("Error en webhook WhatsApp:", error);

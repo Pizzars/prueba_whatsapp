@@ -1,13 +1,14 @@
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/api";
+import { APPSYNC_ENDPOINT, APPSYNC_API_KEY, AWS_REGION } from "./constants";
 
 Amplify.configure({
   API: {
     GraphQL: {
-      endpoint: process.env.NEXT_PUBLIC_APPSYNC_ENDPOINT || "https://nacdrra6kvcgdgfl6vvrvxbs5i.appsync-api.us-east-1.amazonaws.com/graphql",
-      region: process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1",
+      endpoint: APPSYNC_ENDPOINT,
+      region: AWS_REGION,
       defaultAuthMode: "apiKey",
-      apiKey: process.env.NEXT_PUBLIC_APPSYNC_API_KEY || "da2-hkrvgcesznby3dxfbuedq5gepy",
+      apiKey: APPSYNC_API_KEY,
     },
   },
 });
