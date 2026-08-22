@@ -1,10 +1,12 @@
 // Sessions
 export const getSession = /* GraphQL */ `
   query GetSession($id: ID!) {
-    getSession_prueba_whatsapp(id: $id) {
+    getSession(id: $id) {
       id
       sessionId
       token
+      documento
+      nombre
       latitude
       longitude
       createdAt
@@ -16,16 +18,14 @@ export const getSession = /* GraphQL */ `
 `;
 
 export const listSessions = /* GraphQL */ `
-  query ListSessions(
-    $filter: ModelSession_prueba_whatsappFilterInput
-    $limit: Int
-    $nextToken: String
-  ) {
-    listSession_prueba_whatsapps(filter: $filter, limit: $limit, nextToken: $nextToken) {
+  query ListSessions($filter: TableSessionFilterInput, $limit: Int, $nextToken: String) {
+    listSessions(filter: $filter, limit: $limit, nextToken: $nextToken) {
       items {
         id
         sessionId
         token
+        documento
+        nombre
         latitude
         longitude
         createdAt
@@ -41,7 +41,7 @@ export const listSessions = /* GraphQL */ `
 // Games
 export const getGame = /* GraphQL */ `
   query GetGame($id: ID!) {
-    getGame_prueba_whatsapp(id: $id) {
+    getGame(id: $id) {
       id
       name
       description
@@ -51,12 +51,8 @@ export const getGame = /* GraphQL */ `
 `;
 
 export const listGames = /* GraphQL */ `
-  query ListGames(
-    $filter: ModelGame_prueba_whatsappFilterInput
-    $limit: Int
-    $nextToken: String
-  ) {
-    listGame_prueba_whatsapps(filter: $filter, limit: $limit, nextToken: $nextToken) {
+  query ListGames($limit: Int, $nextToken: String) {
+    listGames(limit: $limit, nextToken: $nextToken) {
       items {
         id
         name
@@ -71,7 +67,7 @@ export const listGames = /* GraphQL */ `
 // Bets
 export const getBet = /* GraphQL */ `
   query GetBet($id: ID!) {
-    getBet_prueba_whatsapp(id: $id) {
+    getBet(id: $id) {
       id
       sessionId
       gameId
@@ -87,12 +83,8 @@ export const getBet = /* GraphQL */ `
 `;
 
 export const listBets = /* GraphQL */ `
-  query ListBets(
-    $filter: ModelBet_prueba_whatsappFilterInput
-    $limit: Int
-    $nextToken: String
-  ) {
-    listBet_prueba_whatsapps(filter: $filter, limit: $limit, nextToken: $nextToken) {
+  query ListBets($filter: TableBetFilterInput, $limit: Int, $nextToken: String) {
+    listBets(filter: $filter, limit: $limit, nextToken: $nextToken) {
       items {
         id
         sessionId
@@ -113,7 +105,7 @@ export const listBets = /* GraphQL */ `
 // Conversations
 export const getConversation = /* GraphQL */ `
   query GetConversation($id: ID!) {
-    getConversation_prueba_whatsapp(id: $id) {
+    getConversation(id: $id) {
       id
       phoneNumber
       sessionId
@@ -129,12 +121,8 @@ export const getConversation = /* GraphQL */ `
 `;
 
 export const listConversations = /* GraphQL */ `
-  query ListConversations(
-    $filter: ModelConversation_prueba_whatsappFilterInput
-    $limit: Int
-    $nextToken: String
-  ) {
-    listConversation_prueba_whatsapps(filter: $filter, limit: $limit, nextToken: $nextToken) {
+  query ListConversations($filter: TableConversationFilterInput, $limit: Int, $nextToken: String) {
+    listConversations(filter: $filter, limit: $limit, nextToken: $nextToken) {
       items {
         id
         phoneNumber

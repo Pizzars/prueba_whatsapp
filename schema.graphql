@@ -1,7 +1,9 @@
-type Session_prueba_whatsapp @model {
+type Session_prueba_whatsapp {
   id: ID!
   sessionId: String!
   token: String!
+  documento: String!
+  nombre: String!
   latitude: Float
   longitude: Float
   createdAt: AWSDateTime!
@@ -10,14 +12,14 @@ type Session_prueba_whatsapp @model {
   active: Boolean!
 }
 
-type Game_prueba_whatsapp @model {
+type Game_prueba_whatsapp {
   id: ID!
   name: String!
   description: String!
   icon: String!
 }
 
-type Bet_prueba_whatsapp @model {
+type Bet_prueba_whatsapp {
   id: ID!
   sessionId: String!
   gameId: String!
@@ -30,7 +32,7 @@ type Bet_prueba_whatsapp @model {
   createdAt: AWSDateTime!
 }
 
-type Conversation_prueba_whatsapp @model {
+type Conversation_prueba_whatsapp {
   id: ID!
   phoneNumber: String!
   sessionId: String
@@ -41,4 +43,166 @@ type Conversation_prueba_whatsapp @model {
   betAmount: Float
   currentPage: Int
   updatedAt: AWSDateTime
+}
+
+input CreateSession_prueba_whatsappInput {
+  id: ID
+  sessionId: String!
+  token: String!
+  documento: String!
+  nombre: String!
+  latitude: Float
+  longitude: Float
+  createdAt: AWSDateTime!
+  expiresAt: AWSDateTime!
+  phoneNumber: String
+  active: Boolean!
+}
+
+input UpdateSession_prueba_whatsappInput {
+  id: ID!
+  sessionId: String
+  token: String
+  documento: String
+  nombre: String
+  latitude: Float
+  longitude: Float
+  createdAt: AWSDateTime
+  expiresAt: AWSDateTime
+  phoneNumber: String
+  active: Boolean
+}
+
+input CreateGame_prueba_whatsappInput {
+  id: ID
+  name: String!
+  description: String!
+  icon: String!
+}
+
+input CreateBet_prueba_whatsappInput {
+  id: ID
+  sessionId: String!
+  gameId: String!
+  drawId: String!
+  drawName: String!
+  number: String!
+  amount: Float!
+  paidAt: AWSDateTime
+  source: String!
+  createdAt: AWSDateTime!
+}
+
+input CreateConversation_prueba_whatsappInput {
+  id: ID
+  phoneNumber: String!
+  sessionId: String
+  state: String!
+  selectedGame: String
+  selectedDraw: String
+  betNumber: String
+  betAmount: Float
+  currentPage: Int
+  updatedAt: AWSDateTime
+}
+
+input UpdateConversation_prueba_whatsappInput {
+  id: ID!
+  phoneNumber: String
+  sessionId: String
+  state: String
+  selectedGame: String
+  selectedDraw: String
+  betNumber: String
+  betAmount: Float
+  currentPage: Int
+  updatedAt: AWSDateTime
+}
+
+input DeleteInput {
+  id: ID!
+}
+
+input TableSessionFilterInput {
+  sessionId: TableStringFilterInput
+  token: TableStringFilterInput
+  documento: TableStringFilterInput
+  phoneNumber: TableStringFilterInput
+  active: TableBooleanFilterInput
+}
+
+input TableBetFilterInput {
+  sessionId: TableStringFilterInput
+  gameId: TableStringFilterInput
+  source: TableStringFilterInput
+}
+
+input TableConversationFilterInput {
+  phoneNumber: TableStringFilterInput
+  sessionId: TableStringFilterInput
+  state: TableStringFilterInput
+}
+
+input TableStringFilterInput {
+  eq: String
+  ne: String
+  contains: String
+  beginsWith: String
+}
+
+input TableBooleanFilterInput {
+  eq: Boolean
+  ne: Boolean
+}
+
+type SessionConnection {
+  items: [Session_prueba_whatsapp]
+  nextToken: String
+}
+
+type GameConnection {
+  items: [Game_prueba_whatsapp]
+  nextToken: String
+}
+
+type BetConnection {
+  items: [Bet_prueba_whatsapp]
+  nextToken: String
+}
+
+type ConversationConnection {
+  items: [Conversation_prueba_whatsapp]
+  nextToken: String
+}
+
+type Query {
+  getSession(id: ID!): Session_prueba_whatsapp
+  listSessions(filter: TableSessionFilterInput, limit: Int, nextToken: String): SessionConnection
+  getGame(id: ID!): Game_prueba_whatsapp
+  listGames(limit: Int, nextToken: String): GameConnection
+  getBet(id: ID!): Bet_prueba_whatsapp
+  listBets(filter: TableBetFilterInput, limit: Int, nextToken: String): BetConnection
+  getConversation(id: ID!): Conversation_prueba_whatsapp
+  listConversations(filter: TableConversationFilterInput, limit: Int, nextToken: String): ConversationConnection
+}
+
+type Mutation {
+  createSession(input: CreateSession_prueba_whatsappInput!): Session_prueba_whatsapp
+  updateSession(input: UpdateSession_prueba_whatsappInput!): Session_prueba_whatsapp
+  deleteSession(input: DeleteInput!): Session_prueba_whatsapp
+  createGame(input: CreateGame_prueba_whatsappInput!): Game_prueba_whatsapp
+  createBet(input: CreateBet_prueba_whatsappInput!): Bet_prueba_whatsapp
+  createConversation(input: CreateConversation_prueba_whatsappInput!): Conversation_prueba_whatsapp
+  updateConversation(input: UpdateConversation_prueba_whatsappInput!): Conversation_prueba_whatsapp
+}
+
+type Subscription {
+  onCreateBet(sessionId: String): Bet_prueba_whatsapp
+    @aws_subscribe(mutations: ["createBet"])
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
 }

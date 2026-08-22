@@ -1,10 +1,12 @@
 // Sessions
 export const createSession = /* GraphQL */ `
   mutation CreateSession($input: CreateSession_prueba_whatsappInput!) {
-    createSession_prueba_whatsapp(input: $input) {
+    createSession(input: $input) {
       id
       sessionId
       token
+      documento
+      nombre
       latitude
       longitude
       createdAt
@@ -17,10 +19,12 @@ export const createSession = /* GraphQL */ `
 
 export const updateSession = /* GraphQL */ `
   mutation UpdateSession($input: UpdateSession_prueba_whatsappInput!) {
-    updateSession_prueba_whatsapp(input: $input) {
+    updateSession(input: $input) {
       id
       sessionId
       token
+      documento
+      nombre
       latitude
       longitude
       createdAt
@@ -32,8 +36,8 @@ export const updateSession = /* GraphQL */ `
 `;
 
 export const deleteSession = /* GraphQL */ `
-  mutation DeleteSession($input: DeleteSession_prueba_whatsappInput!) {
-    deleteSession_prueba_whatsapp(input: $input) {
+  mutation DeleteSession($input: DeleteInput!) {
+    deleteSession(input: $input) {
       id
     }
   }
@@ -42,7 +46,7 @@ export const deleteSession = /* GraphQL */ `
 // Games
 export const createGame = /* GraphQL */ `
   mutation CreateGame($input: CreateGame_prueba_whatsappInput!) {
-    createGame_prueba_whatsapp(input: $input) {
+    createGame(input: $input) {
       id
       name
       description
@@ -54,7 +58,7 @@ export const createGame = /* GraphQL */ `
 // Bets
 export const createBet = /* GraphQL */ `
   mutation CreateBet($input: CreateBet_prueba_whatsappInput!) {
-    createBet_prueba_whatsapp(input: $input) {
+    createBet(input: $input) {
       id
       sessionId
       gameId
@@ -72,7 +76,7 @@ export const createBet = /* GraphQL */ `
 // Conversations
 export const createConversation = /* GraphQL */ `
   mutation CreateConversation($input: CreateConversation_prueba_whatsappInput!) {
-    createConversation_prueba_whatsapp(input: $input) {
+    createConversation(input: $input) {
       id
       phoneNumber
       sessionId
@@ -89,7 +93,7 @@ export const createConversation = /* GraphQL */ `
 
 export const updateConversation = /* GraphQL */ `
   mutation UpdateConversation($input: UpdateConversation_prueba_whatsappInput!) {
-    updateConversation_prueba_whatsapp(input: $input) {
+    updateConversation(input: $input) {
       id
       phoneNumber
       sessionId
