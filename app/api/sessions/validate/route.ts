@@ -7,6 +7,8 @@ export async function GET(request: Request) {
     const authHeader = request.headers.get("Authorization");
     const token = authHeader?.replace("Bearer ", "");
 
+    console.log("[validate] Token recibido:", token?.slice(0, 8) + "...");
+
     if (!token) {
       return NextResponse.json(
         { valid: false, reason: "Token no proporcionado" },
@@ -15,6 +17,8 @@ export async function GET(request: Request) {
     }
 
     const session = await validateSession(token);
+
+    console.log("[validate] Resultado:", session ? `Sesión encontrada (${session.nombre})` : "No encontrada");
 
     if (!session) {
       return NextResponse.json(

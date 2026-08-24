@@ -51,21 +51,31 @@ export async function createNewSession(data: CreateSessionInput): Promise<Sessio
 }
 
 export async function validateSession(token: string): Promise<Session | null> {
-  const result = await client.graphql({
-    query: listSessions,
-    variables: {
-      filter: { token: { eq: token } },
-      limit: 1,
-    },
-  });
+  // Scan all sessions and filter by token in application code
+  // This approach avoids dependency on AppSync schema filter configuration
+  let allItems: Session[] = [];
+  let nextToken: string | null = null;
 
-  const items = (result as { data: { listSessions: { items: Session[] } } }).data.listSessions.items;
+  do {
+    const variables: { limit: number; nextToken?: string } = { limit: 50 };
+    if (nextToken) variables.nextToken = nextToken;
 
-  if (!items || items.length === 0) {
+    const result = await client.graphql({
+      query: listSessions,
+      variables,
+    });
+
+    const data = (result as { data: { listSessions: { items: Session[]; nextToken: string | null } } }).data;
+    allItems = allItems.concat(data.listSessions.items);
+    nextToken = data.listSessions.nextToken;
+  } while (nextToken);
+
+  // Find session by token
+  const session = allItems.find((s) => s.token === token);
+
+  if (!session) {
     return null;
   }
-
-  const session = items[0];
 
   if (!session.active) {
     return null;
@@ -79,21 +89,15 @@ export async function validateSession(token: string): Promise<Session | null> {
 }
 
 export async function getSessionBySessionId(sessionId: string): Promise<Session | null> {
+  // Scan and filter in application code
   const result = await client.graphql({
     query: listSessions,
-    variables: {
-      filter: { sessionId: { eq: sessionId } },
-      limit: 1,
-    },
+    variables: { limit: 50 },
   });
 
   const items = (result as { data: { listSessions: { items: Session[] } } }).data.listSessions.items;
 
-  if (!items || items.length === 0) {
-    return null;
-  }
-
-  return items[0];
+  return items.find((s) => s.sessionId === sessionId) || null;
 }
 
 export async function associatePhoneNumber(sessionId: string, phoneNumber: string): Promise<Session | null> {
