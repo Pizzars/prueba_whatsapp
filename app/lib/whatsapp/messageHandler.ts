@@ -1,12 +1,19 @@
-import { sendText, sendLocationRequest } from "./sendMessage";
+import { sendText, sendLocationRequest, sendButtons } from "./sendMessage";
 import { client } from "@/app/lib/amplify-server";
 import { listConversations } from "@/app/lib/graphql/queries";
 import {
   createConversation,
   updateConversation,
 } from "@/app/lib/graphql/mutations";
-import { getSessionBySessionId } from "@/app/lib/sessions";
+import {
+  createNewSession,
+  getSessionBySessionId,
+  associatePhoneNumber,
+  deactivateSession,
+} from "@/app/lib/sessions";
+import { validateCredentials } from "@/app/lib/users";
 import { processChatMessage } from "@/app/lib/ai/chatbot";
+import { APP_URL } from "@/app/lib/constants";
 
 // --- Types ---
 
@@ -37,20 +44,9 @@ interface Conversation {
 
 // --- Conversation state management ---
 
-async function getConversation(
-  phoneNumber: string
-): Promise<Conversation | null> {
-  const result = await client.graphql({
-    query: listConversations,
-    variables: { limit: 50 },
-  });
-
-  const items = (
-    result as {
-      data: { listConversations: { items: Conversation[] } };
-    }
-  ).data.listConversations.items;
-
+async function getConversation(phoneNumber: string): Promise<Conversation | null> {
+  const result = await client.graphql({ query: listConversations, variables: { limit: 50 } });
+  const items = (result as { data: { listConversations: { items: Conversation[] } } }).data.listConversations.items;
   return items.find((c) => c.phoneNumber === phoneNumber) || null;
 }
 
@@ -60,38 +56,17 @@ async function createOrUpdateConversation(
   updates: Partial<Conversation>
 ): Promise<Conversation> {
   const now = new Date().toISOString();
-
   if (!conversation) {
-    const input = {
-      phoneNumber,
-      state: "idle",
-      ...updates,
-      updatedAt: now,
-    };
-    const result = await client.graphql({
-      query: createConversation,
-      variables: { input },
-    });
-    return (result as { data: { createConversation: Conversation } }).data
-      .createConversation;
+    const input = { phoneNumber, state: "idle", ...updates, updatedAt: now };
+    const result = await client.graphql({ query: createConversation, variables: { input } });
+    return (result as { data: { createConversation: Conversation } }).data.createConversation;
   }
-
-  const input = {
-    id: conversation.id,
-    ...updates,
-    updatedAt: now,
-  };
-  const result = await client.graphql({
-    query: updateConversation,
-    variables: { input },
-  });
-  return (result as { data: { updateConversation: Conversation } }).data
-    .updateConversation;
+  const input = { id: conversation.id, ...updates, updatedAt: now };
+  const result = await client.graphql({ query: updateConversation, variables: { input } });
+  return (result as { data: { updateConversation: Conversation } }).data.updateConversation;
 }
 
-// --- Chat history management ---
-// Se usa betNumber (campo reutilizado) para guardar el historial serializado.
-// En una implementación más robusta, se usaría una tabla dedicada.
+// --- Chat history for AI ---
 
 interface ChatMessage {
   role: "user" | "model";
@@ -108,9 +83,7 @@ function getHistory(conversation: Conversation | null): ChatMessage[] {
 }
 
 function serializeHistory(history: ChatMessage[]): string {
-  // Mantener solo los últimos 20 mensajes para no exceder límites
-  const trimmed = history.slice(-20);
-  return JSON.stringify(trimmed);
+  return JSON.stringify(history.slice(-20));
 }
 
 // --- Main handler ---
@@ -121,93 +94,238 @@ export async function handleIncomingMessage(
 ): Promise<void> {
   try {
     const conversation = await getConversation(phoneNumber);
+    const state = conversation?.state || "new";
 
     // Extraer texto del mensaje
-    let userMessage = "";
-    if (payload.type === "text") {
-      userMessage = payload.text || "";
-    } else if (payload.type === "location") {
-      // Guardar ubicación y notificar al chatbot
-      const { latitude, longitude } = payload.location!;
+    const text = payload.type === "text" ? payload.text || "" : "";
+    const interactiveId = payload.type === "interactive" ? payload.interactive?.id || "" : "";
+
+    // --- Comando global: "terminar" cierra sesión sin IA ---
+    if (text.trim().toLowerCase() === "terminar") {
+      if (conversation?.sessionId) {
+        await deactivateSession(conversation.sessionId);
+      }
       await createOrUpdateConversation(conversation, phoneNumber, {
-        betNumber: String(latitude),
-        betAmount: longitude,
-        state: "idle",
+        state: "new",
+        sessionId: null,
+        selectedGame: null,
+        selectedDraw: null,
+        betNumber: null,
+        betAmount: null,
       });
-      userMessage = `[El usuario compartió su ubicación: latitud ${latitude}, longitud ${longitude}]`;
-    } else if (payload.type === "interactive") {
-      userMessage = payload.interactive?.title || payload.interactive?.id || "";
-    }
-
-    if (!userMessage) return;
-
-    // Obtener contexto de sesión
-    let sessionId = conversation?.sessionId || null;
-    let sessionToken: string | null = null;
-
-    if (sessionId) {
-      const session = await getSessionBySessionId(sessionId);
-      if (session && session.active && new Date(session.expiresAt) > new Date()) {
-        sessionToken = session.token;
-      } else {
-        sessionId = null; // Sesión expirada
-      }
-    }
-
-    // Obtener historial
-    const history = getHistory(conversation);
-
-    // Obtener ubicación guardada
-    const latitude = conversation?.betNumber ? parseFloat(conversation.betNumber) : null;
-    const longitude = conversation?.betAmount || null;
-
-    // Procesar con Gemini
-    const response = await processChatMessage(userMessage, {
-      phoneNumber,
-      sessionId,
-      sessionToken,
-      latitude,
-      longitude,
-      history,
-    });
-
-    // Si se solicitó ubicación, enviar el mensaje interactivo
-    if (response.locationRequested) {
-      await sendLocationRequest(
+      await sendText(
         phoneNumber,
-        "📍 Comparte tu ubicación para continuar:"
+        "👋 ¡Gracias por usar la Plataforma de Apuestas! Tu sesión ha sido cerrada.\n\n¡Te esperamos pronto! Escribe cualquier mensaje cuando desees volver. 🎰"
       );
+      return;
     }
 
-    // Enviar respuesta de texto
-    if (response.text) {
-      await sendText(phoneNumber, response.text);
+    // --- Flujo sin sesión: login rígido (sin IA) ---
+    if (state === "new" || state === "choosing_login_method" || state === "awaiting_location" ||
+        state === "awaiting_login" || state === "awaiting_documento" || state === "awaiting_password") {
+      await handleLoginFlow(phoneNumber, conversation, state, payload, text, interactiveId);
+      return;
     }
 
-    // Actualizar historial
-    const newHistory: ChatMessage[] = [
-      ...history,
-      { role: "user", parts: [{ text: userMessage }] },
-      { role: "model", parts: [{ text: response.text }] },
-    ];
-
-    // Actualizar conversación en DynamoDB
-    // Obtenemos el sessionId actualizado del contexto (puede haber cambiado si hizo login/logout)
-    const updatedConversation = await getConversation(phoneNumber);
-    await createOrUpdateConversation(
-      updatedConversation || conversation,
-      phoneNumber,
-      {
-        state: "idle",
-        selectedDraw: serializeHistory(newHistory), // Historial serializado
+    // --- Con sesión activa: verificar que no haya expirado ---
+    if (conversation?.sessionId) {
+      const session = await getSessionBySessionId(conversation.sessionId);
+      if (!session || !session.active || new Date(session.expiresAt) < new Date()) {
+        // Sesión expirada
+        await createOrUpdateConversation(conversation, phoneNumber, {
+          state: "new",
+          sessionId: null,
+          selectedDraw: null,
+        });
+        await sendText(phoneNumber, "⚠️ Tu sesión ha expirado. Necesitas iniciar sesión nuevamente.");
+        await sendButtons(phoneNumber, "¿Cómo deseas iniciar sesión?", [
+          { id: "login_web", title: "Ingresar con URL" },
+          { id: "login_whatsapp", title: "Usuario y contraseña" },
+        ]);
+        await createOrUpdateConversation(conversation, phoneNumber, { state: "choosing_login_method" });
+        return;
       }
-    );
+    }
+
+    // --- Con sesión activa: delegar a Gemini IA ---
+    await handleWithAI(phoneNumber, conversation!, payload, text);
   } catch (error) {
     console.error("Error en messageHandler:", error);
-    // Fallback: enviar mensaje de error amigable
-    await sendText(
-      phoneNumber,
-      "😅 Tuve un problema procesando tu mensaje. ¿Podrías intentar de nuevo?"
-    );
+    await sendText(phoneNumber, "😅 Tuve un problema procesando tu mensaje. ¿Podrías intentar de nuevo?");
   }
+}
+
+// --- Login flow (sin IA, flujo rígido) ---
+
+async function handleLoginFlow(
+  phoneNumber: string,
+  conversation: Conversation | null,
+  state: string,
+  payload: MessagePayload,
+  text: string,
+  interactiveId: string
+): Promise<void> {
+  switch (state) {
+    case "new":
+      await sendButtons(
+        phoneNumber,
+        "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\n¿Cómo deseas iniciar sesión?",
+        [
+          { id: "login_web", title: "Ingresar con URL" },
+          { id: "login_whatsapp", title: "Usuario y contraseña" },
+        ]
+      );
+      await createOrUpdateConversation(conversation, phoneNumber, { state: "choosing_login_method" });
+      break;
+
+    case "choosing_login_method":
+      if (interactiveId === "login_web" || text === "1") {
+        const sessionId = crypto.randomUUID();
+        const loginUrl = `${APP_URL}/login?session=${sessionId}`;
+        await createOrUpdateConversation(conversation, phoneNumber, { sessionId, state: "awaiting_login" });
+        await sendText(
+          phoneNumber,
+          `🔗 Abre este enlace para iniciar sesión:\n\n${loginUrl}\n\nDespués de iniciar sesión, vuelve aquí y envía cualquier mensaje.`
+        );
+      } else if (interactiveId === "login_whatsapp" || text === "2") {
+        await sendLocationRequest(phoneNumber, "📍 Primero necesito tu ubicación. Compártela usando el botón:");
+        await createOrUpdateConversation(conversation, phoneNumber, { state: "awaiting_location" });
+      } else {
+        await sendButtons(phoneNumber, "Por favor elige una opción:", [
+          { id: "login_web", title: "Ingresar con URL" },
+          { id: "login_whatsapp", title: "Usuario y contraseña" },
+        ]);
+      }
+      break;
+
+    case "awaiting_location":
+      if (payload.type !== "location" || !payload.location) {
+        await sendText(phoneNumber, "📍 Necesito tu ubicación para continuar. Usa el botón de compartir ubicación.");
+        await sendLocationRequest(phoneNumber, "📍 Comparte tu ubicación:");
+        return;
+      }
+      const { latitude, longitude } = payload.location;
+      await createOrUpdateConversation(conversation, phoneNumber, {
+        state: "awaiting_documento",
+        betNumber: String(latitude),
+        betAmount: longitude,
+      });
+      await sendText(phoneNumber, "✅ Ubicación recibida.\n\n📝 Ahora ingresa tu *número de documento* (10 dígitos):");
+      break;
+
+    case "awaiting_login":
+      if (conversation?.sessionId) {
+        const session = await getSessionBySessionId(conversation.sessionId);
+        if (session && session.active) {
+          await associatePhoneNumber(conversation.sessionId, phoneNumber);
+          await createOrUpdateConversation(conversation, phoneNumber, { state: "idle" });
+          await sendText(phoneNumber, `✅ ¡Sesión iniciada! Bienvenido, ${session.nombre}. 🎰\n\nAhora puedo ayudarte con tus apuestas. ¿Qué deseas hacer?`);
+          return;
+        }
+      }
+      if (text.toLowerCase() === "nuevo") {
+        await createOrUpdateConversation(conversation, phoneNumber, { state: "new", sessionId: null });
+        await sendButtons(phoneNumber, "¿Cómo deseas iniciar sesión?", [
+          { id: "login_web", title: "Ingresar con URL" },
+          { id: "login_whatsapp", title: "Usuario y contraseña" },
+        ]);
+        await createOrUpdateConversation(conversation, phoneNumber, { state: "choosing_login_method" });
+      } else {
+        await sendText(phoneNumber, "⏳ Aún no has iniciado sesión desde la web. Abre el enlace que te envié.\n\nEscribe *nuevo* para reiniciar el proceso.");
+      }
+      break;
+
+    case "awaiting_documento":
+      const documento = text.trim();
+      if (!/^\d{10}$/.test(documento)) {
+        await sendText(phoneNumber, "❌ El documento debe ser de 10 dígitos. Intenta de nuevo:");
+        return;
+      }
+      await createOrUpdateConversation(conversation, phoneNumber, {
+        state: "awaiting_password",
+        selectedGame: documento,
+      });
+      await sendText(phoneNumber, `📋 Documento: *${documento}*\n\n🔒 Ahora ingresa tu *contraseña*:`);
+      break;
+
+    case "awaiting_password":
+      const password = text.trim();
+      if (!password) {
+        await sendText(phoneNumber, "🔒 Ingresa tu contraseña:");
+        return;
+      }
+      const doc = conversation?.selectedGame || "";
+      const user = validateCredentials(doc, password);
+      if (!user) {
+        await sendText(phoneNumber, "❌ Documento o contraseña incorrectos.\n\nVamos a intentar de nuevo. Ingresa tu *número de documento* (10 dígitos):");
+        await createOrUpdateConversation(conversation, phoneNumber, { state: "awaiting_documento", selectedGame: null });
+        return;
+      }
+      const lat = parseFloat(conversation?.betNumber || "0");
+      const lng = conversation?.betAmount || 0;
+      const session = await createNewSession({ documento: user.documento, nombre: user.nombre, latitude: lat, longitude: lng });
+      await associatePhoneNumber(session.sessionId, phoneNumber);
+      await createOrUpdateConversation(conversation, phoneNumber, {
+        sessionId: session.sessionId,
+        state: "idle",
+        betNumber: null,
+        betAmount: null,
+        selectedGame: null,
+      });
+      await sendText(phoneNumber, `✅ ¡Bienvenido, ${user.nombre}! Tu sesión está activa. 🎰\n\nAhora puedo ayudarte con tus apuestas. ¿Qué deseas hacer?`);
+      break;
+  }
+}
+
+// --- AI-powered flow (solo con sesión activa) ---
+
+async function handleWithAI(
+  phoneNumber: string,
+  conversation: Conversation,
+  payload: MessagePayload,
+  text: string
+): Promise<void> {
+  // Extraer mensaje para la IA
+  let userMessage = text;
+  if (payload.type === "location" && payload.location) {
+    userMessage = `[Ubicación compartida: ${payload.location.latitude}, ${payload.location.longitude}]`;
+  } else if (payload.type === "interactive") {
+    userMessage = payload.interactive?.title || payload.interactive?.id || text;
+  }
+
+  if (!userMessage) return;
+
+  // Obtener historial
+  const history = getHistory(conversation);
+
+  // Llamar a Gemini
+  const response = await processChatMessage(userMessage, {
+    phoneNumber,
+    sessionId: conversation.sessionId,
+    sessionToken: null,
+    latitude: conversation.betNumber ? parseFloat(conversation.betNumber) : null,
+    longitude: conversation.betAmount,
+    history,
+  });
+
+  // Si se solicitó ubicación
+  if (response.locationRequested) {
+    await sendLocationRequest(phoneNumber, "📍 Comparte tu ubicación:");
+  }
+
+  // Enviar respuesta
+  if (response.text) {
+    await sendText(phoneNumber, response.text);
+  }
+
+  // Actualizar historial
+  const newHistory: ChatMessage[] = [
+    ...history,
+    { role: "user", parts: [{ text: userMessage }] },
+    { role: "model", parts: [{ text: response.text }] },
+  ];
+
+  await createOrUpdateConversation(conversation, phoneNumber, {
+    selectedDraw: serializeHistory(newHistory),
+  });
 }

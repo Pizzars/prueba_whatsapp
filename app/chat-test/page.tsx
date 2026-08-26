@@ -3,92 +3,214 @@
 import { useState, useRef, useEffect } from "react";
 
 interface Message {
-  role: "user" | "bot";
+  role: "user" | "bot" | "system";
   text: string;
   duration?: string;
   error?: string;
 }
 
+const CACHE_KEY_MESSAGES = "chat-test-messages";
+const CACHE_KEY_PHONE = "chat-test-phone";
+
 export default function ChatTestPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [history, setHistory] = useState<{ role: string; parts: { text: string }[] }[]>([]);
+  const [phoneNumber, setPhoneNumber] = useState("573114770120");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Cargar desde caché al inicio
+  useEffect(() => {
+    const cached = localStorage.getItem(CACHE_KEY_MESSAGES);
+    const cachedPhone = localStorage.getItem(CACHE_KEY_PHONE);
+    if (cached) setMessages(JSON.parse(cached));
+    if (cachedPhone) setPhoneNumber(cachedPhone);
+  }, []);
+
+  // Guardar en caché cuando cambian los mensajes
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(CACHE_KEY_MESSAGES, JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem(CACHE_KEY_PHONE, phoneNumber);
+  }, [phoneNumber]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Enviar al webhook real (igual que WhatsApp)
+  async function sendWebhook(payload: object): Promise<string> {
+    const start = Date.now();
+    const res = await fetch("/api/whatsapp/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const duration = Date.now() - start;
+    const data = await res.json();
+    return `${res.status} (${duration}ms) - ${JSON.stringify(data)}`;
+  }
+
+  // Construir payload exacto de WhatsApp para texto
+  function buildTextPayload(text: string) {
+    return {
+      object: "whatsapp_business_account",
+      entry: [{
+        id: "729348553606955",
+        changes: [{
+          value: {
+            messaging_product: "whatsapp",
+            metadata: {
+              display_phone_number: "15556696973",
+              phone_number_id: "1266826483177939",
+            },
+            contacts: [{ profile: { name: "Test User" }, wa_id: phoneNumber }],
+            messages: [{
+              from: phoneNumber,
+              id: `wamid.test_${Date.now()}`,
+              timestamp: String(Math.floor(Date.now() / 1000)),
+              text: { body: text },
+              type: "text",
+            }],
+          },
+          field: "messages",
+        }],
+      }],
+    };
+  }
+
+  // Construir payload para ubicación
+  function buildLocationPayload(lat: number, lng: number) {
+    return {
+      object: "whatsapp_business_account",
+      entry: [{
+        id: "729348553606955",
+        changes: [{
+          value: {
+            messaging_product: "whatsapp",
+            metadata: {
+              display_phone_number: "15556696973",
+              phone_number_id: "1266826483177939",
+            },
+            contacts: [{ profile: { name: "Test User" }, wa_id: phoneNumber }],
+            messages: [{
+              from: phoneNumber,
+              id: `wamid.test_${Date.now()}`,
+              timestamp: String(Math.floor(Date.now() / 1000)),
+              location: { latitude: lat, longitude: lng },
+              type: "location",
+            }],
+          },
+          field: "messages",
+        }],
+      }],
+    };
+  }
+
+  // Construir payload para botón interactivo
+  function buildInteractivePayload(id: string, title: string) {
+    return {
+      object: "whatsapp_business_account",
+      entry: [{
+        id: "729348553606955",
+        changes: [{
+          value: {
+            messaging_product: "whatsapp",
+            metadata: {
+              display_phone_number: "15556696973",
+              phone_number_id: "1266826483177939",
+            },
+            contacts: [{ profile: { name: "Test User" }, wa_id: phoneNumber }],
+            messages: [{
+              from: phoneNumber,
+              id: `wamid.test_${Date.now()}`,
+              timestamp: String(Math.floor(Date.now() / 1000)),
+              type: "interactive",
+              interactive: {
+                type: "button_reply",
+                button_reply: { id, title },
+              },
+            }],
+          },
+          field: "messages",
+        }],
+      }],
+    };
+  }
+
   async function handleSend() {
     if (!input.trim() || loading) return;
-    const userMessage = input.trim();
+    const text = input.trim();
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", text: userMessage }]);
+    setMessages((prev) => [...prev, { role: "user", text }]);
     setLoading(true);
-    await sendToApi(userMessage);
-  }
 
-  async function handleSendLocation() {
-    if (loading) return;
-    const locationMsg = "[El usuario compartió su ubicación: latitud 4.7119, longitud -74.1170]";
-    setMessages((prev) => [...prev, { role: "user", text: "📍 Ubicación compartida (4.7119, -74.1170)" }]);
-    setLoading(true);
-    await sendToApi(locationMsg, 4.7119, -74.1170);
-  }
-
-  async function sendToApi(message: string, lat?: number, lng?: number) {
     try {
-      const res = await fetch("/api/chat-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          sessionId,
-          history,
-          latitude: lat || undefined,
-          longitude: lng || undefined,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "bot", text: data.response, duration: data.duration },
-        ]);
-        setHistory((prev) => [
-          ...prev,
-          { role: "user", parts: [{ text: message }] },
-          { role: "model", parts: [{ text: data.response }] },
-        ]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "bot",
-            text: `❌ ERROR: ${data.error}`,
-            duration: data.duration,
-            error: data.stack,
-          },
-        ]);
-      }
-    } catch (err) {
+      const payload = buildTextPayload(text);
+      const result = await sendWebhook(payload);
       setMessages((prev) => [
         ...prev,
-        { role: "bot", text: `❌ Error de conexión: ${err}` },
+        { role: "system", text: `📤 Webhook: ${result}` },
       ]);
+      // Esperar un poco para que el bot procese y responda
+      await waitForResponse();
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: "bot", text: `❌ Error: ${err}` }]);
     } finally {
       setLoading(false);
     }
   }
 
+  async function handleSendLocation() {
+    if (loading) return;
+    setMessages((prev) => [...prev, { role: "user", text: "📍 Ubicación: 4.7119, -74.1170 (Bogotá)" }]);
+    setLoading(true);
+
+    try {
+      const payload = buildLocationPayload(4.7119, -74.1170);
+      const result = await sendWebhook(payload);
+      setMessages((prev) => [
+        ...prev,
+        { role: "system", text: `📤 Webhook: ${result}` },
+      ]);
+      await waitForResponse();
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: "bot", text: `❌ Error: ${err}` }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Esperar respuesta del bot (el webhook procesa async y envía por WhatsApp API)
+  // En local no llega a WhatsApp pero podemos mostrar un indicador
+  async function waitForResponse() {
+    // El webhook responde 200 inmediato, el procesamiento es async.
+    // En producción la respuesta llega por WhatsApp.
+    // En el test, mostramos que se envió correctamente.
+    await new Promise((r) => setTimeout(r, 500));
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "bot",
+        text: "💬 Mensaje enviado al webhook. La respuesta se envía por WhatsApp al número " + phoneNumber + ".\n\nEn producción verías la respuesta en el chat de WhatsApp. En local, revisa la consola del servidor para ver los logs del chatbot.",
+      },
+    ]);
+  }
+
   function handleClear() {
     setMessages([]);
-    setHistory([]);
-    setSessionId(null);
+    localStorage.removeItem(CACHE_KEY_MESSAGES);
+  }
+
+  function handleFullReset() {
+    setMessages([]);
+    setPhoneNumber("573114770120");
+    localStorage.removeItem(CACHE_KEY_MESSAGES);
+    localStorage.removeItem(CACHE_KEY_PHONE);
   }
 
   return (
@@ -99,33 +221,60 @@ export default function ChatTestPage() {
           <div>
             <h1 className="text-xl font-bold text-white">🧪 Chat Test</h1>
             <p className="text-xs text-zinc-500">
-              Prueba el chatbot Gemini sin WhatsApp
+              Simula WhatsApp → Webhook (mismo flujo real)
             </p>
           </div>
-          <button
-            onClick={handleClear}
-            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:text-white"
-          >
-            Limpiar
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleClear}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:text-white"
+            >
+              Limpiar chat
+            </button>
+            <button
+              onClick={handleFullReset}
+              className="rounded-lg border border-red-700 px-3 py-1.5 text-xs text-red-400 hover:text-red-300"
+            >
+              Reset total
+            </button>
+          </div>
+        </div>
+
+        {/* Phone config */}
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-xs text-zinc-500">Número simulado:</span>
+          <input
+            type="text"
+            value={phoneNumber}
+            onChange={(e) => setPhoneNumber(e.target.value)}
+            className="w-36 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-white"
+          />
         </div>
 
         {/* Messages */}
         <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 p-4">
           {messages.length === 0 && (
             <p className="text-center text-sm text-zinc-600">
-              Escribe un mensaje para probar el chatbot...
+              Envía un mensaje para simular una conversación de WhatsApp...
             </p>
           )}
           {messages.map((msg, i) => (
             <div
               key={i}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex ${
+                msg.role === "user"
+                  ? "justify-end"
+                  : msg.role === "system"
+                  ? "justify-center"
+                  : "justify-start"
+              }`}
             >
               <div
-                className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
                   msg.role === "user"
                     ? "bg-yellow-500/20 text-yellow-200"
+                    : msg.role === "system"
+                    ? "bg-zinc-800/50 text-zinc-500 text-xs italic"
                     : msg.error
                     ? "bg-red-900/30 text-red-300"
                     : "bg-zinc-800 text-zinc-200"
@@ -157,7 +306,7 @@ export default function ChatTestPage() {
           {loading && (
             <div className="flex justify-start">
               <div className="rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-400">
-                ⏳ Pensando...
+                ⏳ Procesando...
               </div>
             </div>
           )}
@@ -184,19 +333,24 @@ export default function ChatTestPage() {
         </div>
 
         {/* Simular acciones */}
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <button
             onClick={handleSendLocation}
             disabled={loading}
             className="rounded-lg border border-blue-700 bg-blue-900/20 px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-900/40 disabled:opacity-50"
           >
-            📍 Simular ubicación
+            📍 Enviar ubicación
           </button>
         </div>
 
-        {/* Debug info */}
-        <div className="mt-2 text-xs text-zinc-600">
-          Session: {sessionId || "ninguna"} | Historial: {history.length} mensajes
+        {/* Info */}
+        <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/30 p-2">
+          <p className="text-xs text-zinc-500">
+            Este chat envía mensajes al webhook real (<code>/api/whatsapp/webhook</code>) con el mismo formato que WhatsApp.
+            La sesión se mantiene en DynamoDB asociada al número <strong>{phoneNumber}</strong>.
+            Las respuestas del bot se envían por la API de WhatsApp (en producción llegan al chat real).
+            En local, revisa los logs de la consola para ver las respuestas.
+          </p>
         </div>
       </div>
     </div>
