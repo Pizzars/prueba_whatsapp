@@ -1,23 +1,12 @@
-import { sendText, sendLocationRequest, sendButtons } from "./sendMessage";
+import { sendText, sendLocationRequest } from "./sendMessage";
 import { client } from "@/app/lib/amplify-server";
 import { listConversations } from "@/app/lib/graphql/queries";
 import {
   createConversation,
   updateConversation,
 } from "@/app/lib/graphql/mutations";
-import {
-  createNewSession,
-  validateSession,
-  getSessionBySessionId,
-  associatePhoneNumber,
-  deactivateSession,
-} from "@/app/lib/sessions";
-import { validateCredentials } from "@/app/lib/users";
-import { generateDraws, paginateDraws } from "@/app/lib/draws";
-import { formatCurrency } from "@/app/lib/formatCurrency";
-import { listGames, listBets } from "@/app/lib/graphql/queries";
-import { createBet } from "@/app/lib/graphql/mutations";
-import { APP_URL } from "@/app/lib/constants";
+import { getSessionBySessionId } from "@/app/lib/sessions";
+import { processChatMessage } from "@/app/lib/ai/chatbot";
 
 // --- Types ---
 
@@ -53,10 +42,7 @@ async function getConversation(
 ): Promise<Conversation | null> {
   const result = await client.graphql({
     query: listConversations,
-    variables: {
-      filter: { phoneNumber: { eq: phoneNumber } },
-      limit: 1,
-    },
+    variables: { limit: 50 },
   });
 
   const items = (
@@ -65,7 +51,7 @@ async function getConversation(
     }
   ).data.listConversations.items;
 
-  return items.length > 0 ? items[0] : null;
+  return items.find((c) => c.phoneNumber === phoneNumber) || null;
 }
 
 async function createOrUpdateConversation(
@@ -103,741 +89,125 @@ async function createOrUpdateConversation(
     .updateConversation;
 }
 
+// --- Chat history management ---
+// Se usa betNumber (campo reutilizado) para guardar el historial serializado.
+// En una implementación más robusta, se usaría una tabla dedicada.
+
+interface ChatMessage {
+  role: "user" | "model";
+  parts: { text: string }[];
+}
+
+function getHistory(conversation: Conversation | null): ChatMessage[] {
+  if (!conversation?.selectedDraw) return [];
+  try {
+    return JSON.parse(conversation.selectedDraw) as ChatMessage[];
+  } catch {
+    return [];
+  }
+}
+
+function serializeHistory(history: ChatMessage[]): string {
+  // Mantener solo los últimos 20 mensajes para no exceder límites
+  const trimmed = history.slice(-20);
+  return JSON.stringify(trimmed);
+}
+
 // --- Main handler ---
 
 export async function handleIncomingMessage(
   phoneNumber: string,
   payload: MessagePayload
 ): Promise<void> {
-  const conversation = await getConversation(phoneNumber);
-  const state = conversation?.state || "new";
+  try {
+    const conversation = await getConversation(phoneNumber);
 
-  // Comando global: "terminar" reinicia todo sin importar el estado
-  const text = payload.type === "text" ? payload.text || "" : "";
-  if (text.trim().toLowerCase() === "terminar") {
-    await handleTerminar(phoneNumber, conversation);
-    return;
-  }
-
-  // Flujo según estado
-  switch (state) {
-    case "new":
-      // Primera vez - ofrecer opciones de login
-      await handleNewUser(phoneNumber, conversation);
-      break;
-
-    case "choosing_login_method":
-      // Eligiendo método de login
-      await handleChooseLoginMethod(phoneNumber, conversation!, payload);
-      break;
-
-    case "awaiting_location":
-      // Esperando ubicación (flujo credenciales)
-      await handleLocation(phoneNumber, conversation!, payload);
-      break;
-
-    case "awaiting_login":
-      // Esperando que inicie sesión via web URL
-      await handleAwaitingLogin(phoneNumber, conversation!, payload);
-      break;
-
-    case "awaiting_documento":
-      // Esperando número de documento
-      await handleDocumento(phoneNumber, conversation!, payload);
-      break;
-
-    case "awaiting_password":
-      // Esperando contraseña
-      await handlePassword(phoneNumber, conversation!, payload);
-      break;
-
-    case "idle":
-    case "selecting_game":
-    case "selecting_draw":
-    case "entering_number":
-    case "entering_amount":
-      // Tiene sesión activa - verificar antes
-      const hasSession = conversation?.sessionId
-        ? await checkActiveSession(conversation.sessionId)
-        : false;
-
-      if (!hasSession) {
-        // Sesión expirada, pedir login nuevamente
-        await sendText(phoneNumber, "⚠️ Tu sesión ha expirado. Necesitas iniciar sesión nuevamente.");
-        await sendButtons(
-          phoneNumber,
-          "¿Cómo deseas iniciar sesión?",
-          [
-            { id: "login_web", title: "Ingresar con URL" },
-            { id: "login_whatsapp", title: "Usuario y contraseña" },
-          ]
-        );
-        await createOrUpdateConversation(conversation, phoneNumber, {
-          state: "choosing_login_method",
-          sessionId: null,
-          selectedGame: null,
-          selectedDraw: null,
-          betNumber: null,
-          betAmount: null,
-        });
-        return;
-      }
-
-      await handleAuthenticatedFlow(phoneNumber, conversation!, state, payload);
-      break;
-
-    default:
-      // Estado desconocido — ofrecer opciones sin saludo duplicado
-      await sendButtons(phoneNumber, "¿Cómo deseas continuar?", [
-        { id: "login_web", title: "Ingresar con URL" },
-        { id: "login_whatsapp", title: "Usuario y contraseña" },
-      ]);
+    // Extraer texto del mensaje
+    let userMessage = "";
+    if (payload.type === "text") {
+      userMessage = payload.text || "";
+    } else if (payload.type === "location") {
+      // Guardar ubicación y notificar al chatbot
+      const { latitude, longitude } = payload.location!;
       await createOrUpdateConversation(conversation, phoneNumber, {
-        state: "choosing_login_method",
+        betNumber: String(latitude),
+        betAmount: longitude,
+        state: "idle",
       });
-      break;
-  }
-}
+      userMessage = `[El usuario compartió su ubicación: latitud ${latitude}, longitud ${longitude}]`;
+    } else if (payload.type === "interactive") {
+      userMessage = payload.interactive?.title || payload.interactive?.id || "";
+    }
 
-// --- Check session ---
+    if (!userMessage) return;
 
-async function checkActiveSession(sessionId: string): Promise<boolean> {
-  const session = await getSessionBySessionId(sessionId);
-  if (!session) return false;
-  if (!session.active) return false;
-  if (new Date(session.expiresAt) < new Date()) return false;
-  return true;
-}
+    // Obtener contexto de sesión
+    let sessionId = conversation?.sessionId || null;
+    let sessionToken: string | null = null;
 
-// --- Terminar (reset global) ---
+    if (sessionId) {
+      const session = await getSessionBySessionId(sessionId);
+      if (session && session.active && new Date(session.expiresAt) > new Date()) {
+        sessionToken = session.token;
+      } else {
+        sessionId = null; // Sesión expirada
+      }
+    }
 
-async function handleTerminar(
-  phoneNumber: string,
-  conversation: Conversation | null
-): Promise<void> {
-  // Desactivar sesión si existe
-  if (conversation?.sessionId) {
-    await deactivateSession(conversation.sessionId);
-  }
+    // Obtener historial
+    const history = getHistory(conversation);
 
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "new",
-    sessionId: null,
-    selectedGame: null,
-    selectedDraw: null,
-    betNumber: null,
-    betAmount: null,
-  });
+    // Obtener ubicación guardada
+    const latitude = conversation?.betNumber ? parseFloat(conversation.betNumber) : null;
+    const longitude = conversation?.betAmount || null;
 
-  await sendText(
-    phoneNumber,
-    "� ¡Gracias por usar la Plataforma de Apuestas! Tu sesión ha sido cerrada.\n\n¡Te esperamos pronto! Escribe cualquier mensaje cuando desees volver. 🎰"
-  );
-}
-
-// --- New user flow ---
-
-async function handleNewUser(
-  phoneNumber: string,
-  conversation: Conversation | null
-): Promise<void> {
-  await sendButtons(
-    phoneNumber,
-    "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\n¿Cómo deseas iniciar sesión?",
-    [
-      { id: "login_web", title: "Ingresar con URL" },
-      { id: "login_whatsapp", title: "Usuario y contraseña" },
-    ]
-  );
-
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "choosing_login_method",
-  });
-}
-
-// --- Choose login method ---
-
-async function handleChooseLoginMethod(
-  phoneNumber: string,
-  conversation: Conversation,
-  payload: MessagePayload
-): Promise<void> {
-  const interactiveId = payload.type === "interactive" ? payload.interactive?.id || "" : "";
-  const text = payload.type === "text" ? payload.text || "" : "";
-
-  if (interactiveId === "login_web" || text === "1") {
-    // Opción 1: Login por URL
-    const sessionId = crypto.randomUUID();
-    const loginUrl = `${APP_URL}/login?session=${sessionId}`;
-
-    await createOrUpdateConversation(conversation, phoneNumber, {
+    // Procesar con Gemini
+    const response = await processChatMessage(userMessage, {
+      phoneNumber,
       sessionId,
-      state: "awaiting_login",
+      sessionToken,
+      latitude,
+      longitude,
+      history,
     });
 
-    await sendText(
-      phoneNumber,
-      `🔗 Abre este enlace para iniciar sesión:\n\n${loginUrl}\n\nDespués de iniciar sesión, el navegador te dará la opción de volver al chat. Una vez aquí, envía cualquier mensaje para continuar.`
-    );
-    return;
-  }
-
-  if (interactiveId === "login_whatsapp" || text === "2") {
-    // Opción 2: Credenciales por WhatsApp → primero pedir ubicación
-    await sendLocationRequest(
-      phoneNumber,
-      "📍 Primero necesito tu ubicación. Compártela usando el botón:"
-    );
-
-    await createOrUpdateConversation(conversation, phoneNumber, {
-      state: "awaiting_location",
-    });
-    return;
-  }
-
-  // Si no eligió una opción válida, volver a preguntar
-  await sendButtons(phoneNumber, "Por favor elige una opción:", [
-    { id: "login_web", title: "Ingresar con URL" },
-    { id: "login_whatsapp", title: "Usuario y contraseña" },
-  ]);
-}
-// --- Location flow ---
-
-async function handleLocation(
-  phoneNumber: string,
-  conversation: Conversation,
-  payload: MessagePayload
-): Promise<void> {
-  if (payload.type !== "location" || !payload.location) {
-    await sendText(
-      phoneNumber,
-      "📍 Necesito tu ubicación para continuar. Usa el botón de compartir ubicación."
-    );
-    await sendLocationRequest(
-      phoneNumber,
-      "📍 Comparte tu ubicación:"
-    );
-    return;
-  }
-
-  // Guardar ubicación temporalmente
-  const { latitude, longitude } = payload.location;
-
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "awaiting_documento",
-    betNumber: String(latitude),
-    betAmount: longitude,
-  });
-
-  await sendText(
-    phoneNumber,
-    "✅ Ubicación recibida.\n\n📝 Ahora ingresa tu *número de documento* (10 dígitos):"
-  );
-}
-
-// --- Awaiting documento ---
-
-async function handleDocumento(
-  phoneNumber: string,
-  conversation: Conversation,
-  payload: MessagePayload
-): Promise<void> {
-  const text = payload.type === "text" ? payload.text || "" : "";
-  const documento = text.trim();
-
-  if (!/^\d{10}$/.test(documento)) {
-    await sendText(
-      phoneNumber,
-      "❌ El documento debe ser de 10 dígitos. Intenta de nuevo:"
-    );
-    return;
-  }
-
-  // Guardar documento temporalmente en selectedGame (reutilizamos el campo)
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "awaiting_password",
-    selectedGame: documento,
-  });
-
-  await sendText(
-    phoneNumber,
-    `📋 Documento: *${documento}*\n\n🔒 Ahora ingresa tu *contraseña*:`
-  );
-}
-
-// --- Awaiting password ---
-
-async function handlePassword(
-  phoneNumber: string,
-  conversation: Conversation,
-  payload: MessagePayload
-): Promise<void> {
-  const text = payload.type === "text" ? payload.text || "" : "";
-  const password = text.trim();
-
-  if (!password) {
-    await sendText(phoneNumber, "🔒 Ingresa tu contraseña:");
-    return;
-  }
-
-  const documento = conversation.selectedGame || "";
-
-  // Validar credenciales
-  const user = validateCredentials(documento, password);
-  if (!user) {
-    await sendText(
-      phoneNumber,
-      "❌ Documento o contraseña incorrectos.\n\nVamos a intentar de nuevo. Ingresa tu *número de documento* (10 dígitos):"
-    );
-    await createOrUpdateConversation(conversation, phoneNumber, {
-      state: "awaiting_documento",
-      selectedGame: null,
-    });
-    return;
-  }
-
-  // Crear sesión con la ubicación guardada
-  const latitude = parseFloat(conversation.betNumber || "0");
-  const longitude = conversation.betAmount || 0;
-
-  const session = await createNewSession({
-    documento: user.documento,
-    nombre: user.nombre,
-    latitude,
-    longitude,
-  });
-
-  // Asociar phone number
-  await associatePhoneNumber(session.sessionId, phoneNumber);
-
-  // Actualizar conversación
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    sessionId: session.sessionId,
-    state: "idle",
-    betNumber: null,
-    betAmount: null,
-    selectedGame: null,
-  });
-
-  await sendText(
-    phoneNumber,
-    `✅ ¡Bienvenido, ${user.nombre}! Tu sesión está activa.`
-  );
-
-  await sendMainMenu(phoneNumber);
-}
-
-// --- Awaiting web login ---
-
-async function handleAwaitingLogin(
-  phoneNumber: string,
-  conversation: Conversation,
-  payload: MessagePayload
-): Promise<void> {
-  if (!conversation.sessionId) {
-    // No debería pasar, pero por seguridad redirigir a opciones
-    await sendButtons(phoneNumber, "¿Cómo deseas iniciar sesión?", [
-      { id: "login_web", title: "Ingresar con URL" },
-      { id: "login_whatsapp", title: "Usuario y contraseña" },
-    ]);
-    await createOrUpdateConversation(conversation, phoneNumber, {
-      state: "choosing_login_method",
-    });
-    return;
-  }
-
-  const session = await getSessionBySessionId(conversation.sessionId);
-  if (session && session.active) {
-    await associatePhoneNumber(conversation.sessionId, phoneNumber);
-    await createOrUpdateConversation(conversation, phoneNumber, {
-      state: "idle",
-    });
-    await sendText(
-      phoneNumber,
-      `✅ ¡Sesión iniciada correctamente! Bienvenido, ${session.nombre}.`
-    );
-    await sendMainMenu(phoneNumber);
-    return;
-  }
-
-  const text = payload.type === "text" ? payload.text || "" : "";
-  if (text.toLowerCase() === "nuevo") {
-    await handleNewUser(phoneNumber, conversation);
-    return;
-  }
-
-  await sendText(
-    phoneNumber,
-    "⏳ Aún no has iniciado sesión desde la web. Abre el enlace que te envié.\n\nEscribe *nuevo* para reiniciar el proceso."
-  );
-}
-
-// --- Authenticated flow ---
-
-async function handleAuthenticatedFlow(
-  phoneNumber: string,
-  conversation: Conversation,
-  state: string,
-  payload: MessagePayload
-): Promise<void> {
-  const text = payload.type === "text" ? payload.text || "" : "";
-  const interactiveId = payload.type === "interactive" ? payload.interactive?.id || "" : "";
-
-  // Comando global: "menu" vuelve al menú
-  if (text.toLowerCase() === "menu" || interactiveId === "menu") {
-    await createOrUpdateConversation(conversation, phoneNumber, {
-      state: "idle",
-      selectedGame: null,
-      selectedDraw: null,
-      betNumber: null,
-      betAmount: null,
-    });
-    await sendMainMenu(phoneNumber);
-    return;
-  }
-
-  switch (state) {
-    case "idle":
-      await handleMenu(phoneNumber, conversation, text, interactiveId);
-      break;
-    case "selecting_game":
-      await handleSelectGame(phoneNumber, conversation, text);
-      break;
-    case "selecting_draw":
-      await handleSelectDraw(phoneNumber, conversation, text);
-      break;
-    case "entering_number":
-      await handleEnterNumber(phoneNumber, conversation, text);
-      break;
-    case "entering_amount":
-      await handleEnterAmount(phoneNumber, conversation, text);
-      break;
-    default:
-      await sendMainMenu(phoneNumber);
-      break;
-  }
-}
-
-// --- Menu ---
-
-async function sendMainMenu(phoneNumber: string): Promise<void> {
-  await sendText(
-    phoneNumber,
-    "¿Qué deseas hacer?\n\n1️⃣ Ver juegos disponibles\n2️⃣ Hacer una apuesta\n3️⃣ Ver mis apuestas\n4️⃣ Cerrar sesión\n\nEscribe el número de la opción."
-  );
-}
-
-async function handleMenu(
-  phoneNumber: string,
-  conversation: Conversation,
-  text: string,
-  interactiveId: string
-): Promise<void> {
-  const option = interactiveId || text.trim();
-
-  switch (option) {
-    case "1":
-      await handleListGames(phoneNumber, conversation);
-      break;
-    case "2":
-      await startBetFlow(phoneNumber, conversation);
-      break;
-    case "3":
-      await handleListBets(phoneNumber, conversation);
-      break;
-    case "4":
-      await handleLogout(phoneNumber, conversation);
-      break;
-    default:
-      await sendMainMenu(phoneNumber);
-      break;
-  }
-}
-
-// --- List games ---
-
-async function handleListGames(
-  phoneNumber: string,
-  conversation: Conversation
-): Promise<void> {
-  const result = await client.graphql({ query: listGames });
-  const games = (
-    result as {
-      data: { listGames: { items: { id: string; name: string; icon: string; description: string }[] } };
+    // Si se solicitó ubicación, enviar el mensaje interactivo
+    if (response.locationRequested) {
+      await sendLocationRequest(
+        phoneNumber,
+        "📍 Comparte tu ubicación para continuar:"
+      );
     }
-  ).data.listGames.items;
 
-  if (games.length === 0) {
-    await sendText(phoneNumber, "No hay juegos disponibles en este momento.");
-    await sendMainMenu(phoneNumber);
-    return;
-  }
-
-  let message = "🎲 *Juegos disponibles:*\n\n";
-  games.forEach((game, i) => {
-    message += `${i + 1}. ${game.icon} *${game.name}*\n   ${game.description}\n\n`;
-  });
-  message += "Escribe *menu* para volver al menú principal.";
-
-  await sendText(phoneNumber, message);
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "idle",
-  });
-}
-
-// --- Bet flow ---
-
-async function startBetFlow(
-  phoneNumber: string,
-  conversation: Conversation
-): Promise<void> {
-  const result = await client.graphql({ query: listGames });
-  const games = (
-    result as {
-      data: { listGames: { items: { id: string; name: string; icon: string }[] } };
+    // Enviar respuesta de texto
+    if (response.text) {
+      await sendText(phoneNumber, response.text);
     }
-  ).data.listGames.items;
 
-  let message = "🎰 *Selecciona un juego:*\n\n";
-  games.forEach((game, i) => {
-    message += `${i + 1}. ${game.icon} ${game.name}\n`;
-  });
-  message += "\nEscribe el número del juego.";
+    // Actualizar historial
+    const newHistory: ChatMessage[] = [
+      ...history,
+      { role: "user", parts: [{ text: userMessage }] },
+      { role: "model", parts: [{ text: response.text }] },
+    ];
 
-  await sendText(phoneNumber, message);
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "selecting_game",
-  });
-}
-
-async function handleSelectGame(
-  phoneNumber: string,
-  conversation: Conversation,
-  text: string
-): Promise<void> {
-  const result = await client.graphql({ query: listGames });
-  const games = (
-    result as {
-      data: { listGames: { items: { id: string; name: string; icon: string }[] } };
-    }
-  ).data.listGames.items;
-
-  const index = parseInt(text.trim(), 10) - 1;
-  if (isNaN(index) || index < 0 || index >= games.length) {
+    // Actualizar conversación en DynamoDB
+    // Obtenemos el sessionId actualizado del contexto (puede haber cambiado si hizo login/logout)
+    const updatedConversation = await getConversation(phoneNumber);
+    await createOrUpdateConversation(
+      updatedConversation || conversation,
+      phoneNumber,
+      {
+        state: "idle",
+        selectedDraw: serializeHistory(newHistory), // Historial serializado
+      }
+    );
+  } catch (error) {
+    console.error("Error en messageHandler:", error);
+    // Fallback: enviar mensaje de error amigable
     await sendText(
       phoneNumber,
-      `❌ Opción inválida. Escribe un número del 1 al ${games.length}.`
+      "😅 Tuve un problema procesando tu mensaje. ¿Podrías intentar de nuevo?"
     );
-    return;
   }
-
-  const selectedGame = games[index];
-  const draws = generateDraws(selectedGame.id);
-  const paginated = paginateDraws(draws, 1);
-
-  let message = `${selectedGame.icon} *${selectedGame.name}*\n\n📅 Sorteos de hoy:\n\n`;
-  paginated.draws.forEach((draw, i) => {
-    const hourStr = `${String(draw.hour).padStart(2, "0")}:00`;
-    message += `${i + 1}. ${hourStr}\n`;
-  });
-  message += "\nEscribe el número del sorteo.";
-
-  await sendText(phoneNumber, message);
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "selecting_draw",
-    selectedGame: selectedGame.id,
-    currentPage: 1,
-  });
-}
-
-async function handleSelectDraw(
-  phoneNumber: string,
-  conversation: Conversation,
-  text: string
-): Promise<void> {
-  const gameId = conversation.selectedGame || "";
-  const page = conversation.currentPage || 1;
-  const draws = generateDraws(gameId);
-  const paginated = paginateDraws(draws, page);
-
-  const index = parseInt(text.trim(), 10) - 1;
-  if (isNaN(index) || index < 0 || index >= paginated.draws.length) {
-    await sendText(
-      phoneNumber,
-      `❌ Opción inválida. Escribe un número del 1 al ${paginated.draws.length}.`
-    );
-    return;
-  }
-
-  const selectedDraw = paginated.draws[index];
-
-  await sendText(
-    phoneNumber,
-    `✅ Sorteo seleccionado: *${selectedDraw.name}*\n\n🔢 Ingresa tu número de 4 cifras:`
-  );
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "entering_number",
-    selectedDraw: selectedDraw.id,
-  });
-}
-
-async function handleEnterNumber(
-  phoneNumber: string,
-  conversation: Conversation,
-  text: string
-): Promise<void> {
-  const number = text.trim();
-
-  if (!/^\d{4}$/.test(number)) {
-    await sendText(
-      phoneNumber,
-      "❌ El número debe ser de exactamente 4 dígitos. Intenta de nuevo:"
-    );
-    return;
-  }
-
-  await sendText(
-    phoneNumber,
-    `🔢 Número: *${number}*\n\n💰 ¿Cuánto deseas apostar?\nMonto entre ${formatCurrency(500)} y ${formatCurrency(2000)}.\n\nEscribe solo el número (ej: 1000):`
-  );
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "entering_amount",
-    betNumber: number,
-  });
-}
-
-async function handleEnterAmount(
-  phoneNumber: string,
-  conversation: Conversation,
-  text: string
-): Promise<void> {
-  const amount = parseInt(text.trim(), 10);
-
-  if (isNaN(amount) || amount < 500 || amount > 2000) {
-    await sendText(
-      phoneNumber,
-      `❌ Monto inválido. Debe estar entre ${formatCurrency(500)} y ${formatCurrency(2000)}. Intenta de nuevo:`
-    );
-    return;
-  }
-
-  const gameId = conversation.selectedGame || "";
-  const drawId = conversation.selectedDraw || "";
-  const betNumber = conversation.betNumber || "";
-
-  const draws = generateDraws(gameId);
-  const draw = draws.find((d) => d.id === drawId);
-  const drawName = draw?.name || "Sorteo";
-
-  const now = new Date().toISOString();
-  const input = {
-    sessionId: conversation.sessionId || "",
-    gameId,
-    drawId,
-    drawName,
-    number: betNumber,
-    amount,
-    paidAt: now,
-    source: "whatsapp",
-    createdAt: now,
-  };
-
-  await client.graphql({
-    query: createBet,
-    variables: { input },
-  });
-
-  const gameName =
-    gameId === "loteria-nacional" ? "🎰 Lotería Nacional" : "⚡ Chance Express";
-
-  await sendText(
-    phoneNumber,
-    `✅ *Apuesta registrada*\n\n${gameName}\n📅 ${drawName}\n🔢 Número: ${betNumber}\n💰 Monto: ${formatCurrency(amount)}\n\n¡Buena suerte! 🍀`
-  );
-
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "idle",
-    selectedGame: null,
-    selectedDraw: null,
-    betNumber: null,
-    betAmount: null,
-  });
-
-  await sendMainMenu(phoneNumber);
-}
-
-// --- List bets ---
-
-async function handleListBets(
-  phoneNumber: string,
-  conversation: Conversation
-): Promise<void> {
-  const sessionId = conversation.sessionId || "";
-
-  const result = await client.graphql({
-    query: listBets,
-    variables: {
-      filter: { sessionId: { eq: sessionId } },
-      limit: 10,
-    },
-  });
-
-  const bets = (
-    result as {
-      data: {
-        listBets: {
-          items: {
-            drawName: string;
-            number: string;
-            amount: number;
-            source: string;
-            createdAt: string;
-            gameId: string;
-          }[];
-        };
-      };
-    }
-  ).data.listBets.items;
-
-  if (bets.length === 0) {
-    await sendText(phoneNumber, "📋 No tienes apuestas registradas aún.");
-    await sendMainMenu(phoneNumber);
-    return;
-  }
-
-  let message = "📋 *Tus últimas apuestas:*\n\n";
-  bets.forEach((bet, i) => {
-    const icon = bet.gameId === "loteria-nacional" ? "🎰" : "⚡";
-    const src = bet.source === "web" ? "Web" : "WA";
-    message += `${i + 1}. ${icon} #${bet.number} — ${bet.drawName}\n   ${formatCurrency(bet.amount)} (${src})\n\n`;
-  });
-
-  await sendText(phoneNumber, message);
-  await sendMainMenu(phoneNumber);
-}
-
-// --- Logout ---
-
-async function handleLogout(
-  phoneNumber: string,
-  conversation: Conversation
-): Promise<void> {
-  // Desactivar la sesión en DynamoDB
-  if (conversation.sessionId) {
-    await deactivateSession(conversation.sessionId);
-  }
-
-  await createOrUpdateConversation(conversation, phoneNumber, {
-    state: "new",
-    sessionId: null,
-    selectedGame: null,
-    selectedDraw: null,
-    betNumber: null,
-    betAmount: null,
-  });
-
-  await sendText(
-    phoneNumber,
-    "👋 ¡Gracias por usar la Plataforma de Apuestas! Tu sesión ha sido cerrada.\n\n¡Te esperamos pronto! Escribe cualquier mensaje cuando desees volver. 🎰"
-  );
 }
