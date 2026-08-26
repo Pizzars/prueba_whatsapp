@@ -25,4 +25,4 @@ export const WHATSAPP_FLOW_MODE = "draft"; // cambiar a "published" cuando se pu
 
 // --- Gemini AI ---
 export const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
-export const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20";
+export const GEMINI_MODEL = "gemini-3.5-flash-lite";

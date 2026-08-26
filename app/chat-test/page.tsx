@@ -23,20 +23,32 @@ export default function ChatTestPage() {
 
   async function handleSend() {
     if (!input.trim() || loading) return;
-
     const userMessage = input.trim();
     setInput("");
     setMessages((prev) => [...prev, { role: "user", text: userMessage }]);
     setLoading(true);
+    await sendToApi(userMessage);
+  }
 
+  async function handleSendLocation() {
+    if (loading) return;
+    const locationMsg = "[El usuario compartió su ubicación: latitud 4.7119, longitud -74.1170]";
+    setMessages((prev) => [...prev, { role: "user", text: "📍 Ubicación compartida (4.7119, -74.1170)" }]);
+    setLoading(true);
+    await sendToApi(locationMsg, 4.7119, -74.1170);
+  }
+
+  async function sendToApi(message: string, lat?: number, lng?: number) {
     try {
       const res = await fetch("/api/chat-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: userMessage,
+          message,
           sessionId,
           history,
+          latitude: lat || undefined,
+          longitude: lng || undefined,
         }),
       });
 
@@ -47,10 +59,9 @@ export default function ChatTestPage() {
           ...prev,
           { role: "bot", text: data.response, duration: data.duration },
         ]);
-        // Actualizar historial
         setHistory((prev) => [
           ...prev,
-          { role: "user", parts: [{ text: userMessage }] },
+          { role: "user", parts: [{ text: message }] },
           { role: "model", parts: [{ text: data.response }] },
         ]);
       } else {
@@ -132,6 +143,12 @@ export default function ChatTestPage() {
                     <pre className="mt-1 overflow-x-auto text-xs text-red-400/70">
                       {msg.error}
                     </pre>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(`${msg.text}\n\n${msg.error}`)}
+                      className="mt-1 rounded bg-red-900/50 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900"
+                    >
+                      Copiar error
+                    </button>
                   </details>
                 )}
               </div>
@@ -163,6 +180,17 @@ export default function ChatTestPage() {
             className="rounded-lg bg-yellow-500 px-4 py-2.5 text-sm font-semibold text-black hover:bg-yellow-400 disabled:opacity-50"
           >
             Enviar
+          </button>
+        </div>
+
+        {/* Simular acciones */}
+        <div className="mt-2 flex gap-2">
+          <button
+            onClick={handleSendLocation}
+            disabled={loading}
+            className="rounded-lg border border-blue-700 bg-blue-900/20 px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-900/40 disabled:opacity-50"
+          >
+            📍 Simular ubicación
           </button>
         </div>
 
