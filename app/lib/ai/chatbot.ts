@@ -59,7 +59,21 @@ async function execListarJuegos(): Promise<string> {
 
 async function execListarSorteos(gameId: string): Promise<string> {
   const draws = generateDraws(gameId);
-  return JSON.stringify({ success: true, gameId, draws: draws.map((d) => ({ id: d.id, name: d.name, hour: d.hour })) });
+  const currentHour = new Date().getHours();
+  // Solo sorteos que aún no han pasado (hora >= hora actual)
+  const upcoming = draws.filter((d) => d.hour >= currentHour).slice(0, 10);
+
+  if (upcoming.length === 0) {
+    return JSON.stringify({ success: true, gameId, draws: [], message: "No hay más sorteos disponibles hoy." });
+  }
+
+  return JSON.stringify({
+    success: true,
+    gameId,
+    totalHoy: draws.length,
+    disponibles: upcoming.length,
+    draws: upcoming.map((d) => ({ id: d.id, name: d.name, hour: d.hour })),
+  });
 }
 
 async function execCrearApuesta(args: Record<string, unknown>, context: ConversationContext): Promise<string> {
