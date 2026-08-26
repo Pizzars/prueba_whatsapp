@@ -7,6 +7,7 @@ const links = [
   { href: "/", label: "🎰 Juegos", matchExact: true },
   { href: "/monitor", label: "📊 Monitor", matchExact: false },
   { href: "/config", label: "⚙️ Config", matchExact: false },
+  { href: "/chat-test", label: "🧪 Chat", matchExact: false },
   { href: "/login", label: "🔑 Login", matchExact: false },
 ];
 
