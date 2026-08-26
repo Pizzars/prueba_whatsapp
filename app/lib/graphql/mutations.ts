@@ -118,6 +118,7 @@ export const createConfig = /* GraphQL */ `
       whatsappVerifyToken
       whatsappApiVersion
       testPhoneNumber
+      geminiModel
       updatedAt
     }
   }
@@ -132,6 +133,7 @@ export const updateConfig = /* GraphQL */ `
       whatsappVerifyToken
       whatsappApiVersion
       testPhoneNumber
+      geminiModel
       updatedAt
     }
   }

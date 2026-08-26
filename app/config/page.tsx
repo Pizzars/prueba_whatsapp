@@ -8,7 +8,17 @@ interface Config {
   whatsappVerifyToken: string;
   whatsappApiVersion: string;
   testPhoneNumber: string;
+  geminiModel: string;
 }
+
+const GEMINI_MODELS = [
+  { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash", desc: "Más capaz. 5 RPM, 20 RPD" },
+  { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash", desc: "Estable. 5 RPM, 20 RPD" },
+  { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite", desc: "Rápido. 15 RPM, 500 RPD ⭐" },
+  { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", desc: "Equilibrado. 5 RPM, 20 RPD" },
+  { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash Lite", desc: "Económico. 15 RPM, 500 RPD" },
+  { id: "gemini-3-flash", name: "Gemini 3 Flash", desc: "Anterior. 5 RPM, 20 RPD" },
+];
 
 export default function ConfigPage() {
   const [config, setConfig] = useState<Config>({
@@ -17,6 +27,7 @@ export default function ConfigPage() {
     whatsappVerifyToken: "",
     whatsappApiVersion: "v25.0",
     testPhoneNumber: "",
+    geminiModel: "gemini-3.5-flash-lite",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -164,6 +175,27 @@ export default function ConfigPage() {
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-yellow-500 focus:outline-none"
               placeholder="Ej: 573114770120"
             />
+          </div>
+
+          {/* Modelo Gemini */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-zinc-300">
+              Modelo de IA (Gemini)
+            </label>
+            <select
+              value={config.geminiModel}
+              onChange={(e) => setConfig({ ...config, geminiModel: e.target.value })}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-yellow-500 focus:outline-none"
+            >
+              {GEMINI_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} — {m.desc}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-zinc-500">
+              ⭐ = Mayor cuota gratis. Si un modelo da error 503, cambia a otro.
+            </p>
           </div>
 
           {/* Mensaje de estado */}

@@ -150,6 +150,7 @@ export const getConfig = /* GraphQL */ `
       whatsappVerifyToken
       whatsappApiVersion
       testPhoneNumber
+      geminiModel
       updatedAt
     }
   }

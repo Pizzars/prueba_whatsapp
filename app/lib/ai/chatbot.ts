@@ -1,8 +1,8 @@
 import { genAI } from "./gemini";
 import { toolDeclarations } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
-import { GEMINI_MODEL } from "@/app/lib/constants";
 import { client } from "@/app/lib/amplify-server";
+import { getWhatsAppConfig } from "@/app/lib/whatsapp-config";
 import { listGames, listBets } from "@/app/lib/graphql/queries";
 import { createBet as createBetMutation } from "@/app/lib/graphql/mutations";
 import { generateDraws } from "@/app/lib/draws";
@@ -123,11 +123,13 @@ export async function processChatMessage(
   context: ConversationContext
 ): Promise<ChatbotResponse> {
   const today = new Date().toISOString().split("T")[0];
+  const config = await getWhatsAppConfig();
+  const modelName = config.geminiModel || "gemini-3.5-flash-lite";
 
   const systemInstruction = SYSTEM_PROMPT + `\n\nFecha actual: ${today}.`;
 
   const model = genAI.getGenerativeModel({
-    model: GEMINI_MODEL,
+    model: modelName,
     systemInstruction,
   });
 

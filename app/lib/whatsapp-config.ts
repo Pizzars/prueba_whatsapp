@@ -8,6 +8,7 @@ const FALLBACK = {
   whatsappVerifyToken: "prueba_whatsapp_verify_2024",
   whatsappApiVersion: "v25.0",
   testPhoneNumber: "573114770120",
+  geminiModel: "gemini-3.5-flash-lite",
 };
 
 export interface WhatsAppConfig {
@@ -16,6 +17,7 @@ export interface WhatsAppConfig {
   whatsappVerifyToken: string;
   whatsappApiVersion: string;
   testPhoneNumber: string;
+  geminiModel: string;
 }
 
 const CONFIG_ID = "whatsapp-config";
@@ -44,6 +46,7 @@ export async function getWhatsAppConfig(): Promise<WhatsAppConfig> {
       whatsappVerifyToken: config.whatsappVerifyToken || FALLBACK.whatsappVerifyToken,
       whatsappApiVersion: config.whatsappApiVersion || FALLBACK.whatsappApiVersion,
       testPhoneNumber: config.testPhoneNumber || FALLBACK.testPhoneNumber,
+      geminiModel: (config as unknown as { geminiModel?: string }).geminiModel || FALLBACK.geminiModel,
     };
   } catch (error) {
     console.error("Error obteniendo config de WhatsApp, usando fallback:", error);
