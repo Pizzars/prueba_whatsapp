@@ -6,7 +6,7 @@
 
 // --- AppSync ---
 export const APPSYNC_ENDPOINT = "https://nacdrra6kvcgdgfl6vvrvxbs5i.appsync-api.us-east-1.amazonaws.com/graphql";
-export const APPSYNC_API_KEY = "da2-dqs7vy6myfd7dp2xppl357woy4";
+export const APPSYNC_API_KEY = "da2-hkrvgcesznby3dxfbuedq5gepy";
 export const AWS_REGION = "us-east-1";
 
 // --- WhatsApp Business API ---
