@@ -1,4 +1,4 @@
-import { sendText, sendLocationRequest, sendButtons } from "./sendMessage";
+import { sendText, sendLocationRequest, sendButtons, sendTemplate } from "./sendMessage";
 import { client } from "@/app/lib/amplify-server";
 import { listConversations } from "@/app/lib/graphql/queries";
 import {
@@ -173,6 +173,7 @@ async function handleLoginFlow(
         [
           { id: "login_web", title: "Ingresar con URL" },
           { id: "login_whatsapp", title: "Usuario y contraseña" },
+          { id: "probar_webview", title: "Probar webview" },
         ]
       );
       await createOrUpdateConversation(conversation, phoneNumber, { state: "choosing_login_method" });
@@ -190,10 +191,15 @@ async function handleLoginFlow(
       } else if (interactiveId === "login_whatsapp" || text === "2") {
         await sendLocationRequest(phoneNumber, "📍 Primero necesito tu ubicación. Compártela usando el botón:");
         await createOrUpdateConversation(conversation, phoneNumber, { state: "awaiting_location" });
+      } else if (interactiveId === "probar_webview" || text === "3") {
+        // Enviar la plantilla prueba_webview
+        await sendTemplate(phoneNumber, "prueba_webview", "es_CO");
+        // Mantener en el mismo estado para que pueda elegir otra opción luego
       } else {
         await sendButtons(phoneNumber, "Por favor elige una opción:", [
           { id: "login_web", title: "Ingresar con URL" },
           { id: "login_whatsapp", title: "Usuario y contraseña" },
+          { id: "probar_webview", title: "Probar webview" },
         ]);
       }
       break;

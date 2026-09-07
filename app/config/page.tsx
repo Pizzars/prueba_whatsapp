@@ -32,8 +32,10 @@ export default function ConfigPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingTemplate, setTestingTemplate] = useState(false);
   const [message, setMessage] = useState("");
   const [testResult, setTestResult] = useState("");
+  const [templateResult, setTemplateResult] = useState("");
 
   // Cargar config actual
   useEffect(() => {
@@ -85,6 +87,24 @@ export default function ConfigPage() {
       setTestResult("❌ Error de conexión");
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleTestTemplate() {
+    setTestingTemplate(true);
+    setTemplateResult("");
+    try {
+      const res = await fetch("/api/config/test-template", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setTemplateResult(`✅ Plantilla enviada a ${data.sentTo} (ID: ${data.messageId})`);
+      } else {
+        setTemplateResult(`❌ Error: ${JSON.stringify(data.details || data.error)}`);
+      }
+    } catch {
+      setTemplateResult("❌ Error de conexión");
+    } finally {
+      setTestingTemplate(false);
     }
   }
 
@@ -234,6 +254,20 @@ export default function ConfigPage() {
             className="w-full rounded-lg border border-green-600 bg-green-600/10 px-4 py-3 font-semibold text-green-400 transition-colors hover:bg-green-600/20 disabled:opacity-50"
           >
             {testing ? "Enviando..." : `Enviar mensaje de prueba a ${config.testPhoneNumber || "..."}`}
+          </button>
+
+          {/* Prueba de plantilla webview */}
+          {templateResult && (
+            <p className={`mb-2 mt-4 rounded-lg px-3 py-2 text-sm ${templateResult.startsWith("✅") ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"}`}>
+              {templateResult}
+            </p>
+          )}
+          <button
+            onClick={handleTestTemplate}
+            disabled={testingTemplate || !config.testPhoneNumber}
+            className="mt-3 w-full rounded-lg border border-purple-600 bg-purple-600/10 px-4 py-3 font-semibold text-purple-400 transition-colors hover:bg-purple-600/20 disabled:opacity-50"
+          >
+            {testingTemplate ? "Enviando..." : `Enviar plantilla "prueba_webview" a ${config.testPhoneNumber || "..."}`}
           </button>
         </div>
 

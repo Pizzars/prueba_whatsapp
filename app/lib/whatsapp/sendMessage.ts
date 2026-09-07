@@ -143,3 +143,22 @@ export async function sendFlow(
     },
   });
 }
+
+/**
+ * Enviar una plantilla (template) de WhatsApp
+ */
+export async function sendTemplate(
+  phoneNumber: string,
+  templateName: string,
+  languageCode: string = "es_CO"
+) {
+  return sendRequest({
+    messaging_product: "whatsapp",
+    to: phoneNumber,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+    },
+  });
+}
