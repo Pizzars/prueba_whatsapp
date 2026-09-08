@@ -176,7 +176,7 @@ export async function handleIncomingMessage(
         await sendText(phoneNumber, "⚠️ Tu sesión ha expirado. Necesitas iniciar sesión nuevamente.");
         await sendButtons(phoneNumber, "¿Cómo deseas iniciar sesión?", [
           { id: "login_web", title: "Ingresar con URL" },
-          { id: "login_whatsapp", title: "Usuario y contraseña" },
+          { id: "login_whatsapp", title: "Credenciales" },
         ]);
         await createOrUpdateConversation(conversation, phoneNumber, { state: "choosing_login_method" });
         return;
@@ -208,7 +208,7 @@ async function handleLoginFlow(
         "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\n¿Cómo deseas iniciar sesión?",
         [
           { id: "login_web", title: "Ingresar con URL" },
-          { id: "login_flow", title: "Formulario en el chat" },
+          { id: "login_flow", title: "Formulario" },
         ]
       );
       await createOrUpdateConversation(conversation, phoneNumber, { state: "choosing_login_method" });
@@ -232,7 +232,7 @@ async function handleLoginFlow(
       } else {
         await sendButtons(phoneNumber, "Por favor elige una opción:", [
           { id: "login_web", title: "Ingresar con URL" },
-          { id: "login_flow", title: "Formulario en el chat" },
+          { id: "login_flow", title: "Formulario" },
         ]);
       }
       break;
@@ -283,7 +283,7 @@ async function handleLoginFlow(
         await createOrUpdateConversation(conversation, phoneNumber, { state: "new", sessionId: null });
         await sendButtons(phoneNumber, "¿Cómo deseas iniciar sesión?", [
           { id: "login_web", title: "Ingresar con URL" },
-          { id: "login_whatsapp", title: "Usuario y contraseña" },
+          { id: "login_whatsapp", title: "Credenciales" },
         ]);
         await createOrUpdateConversation(conversation, phoneNumber, { state: "choosing_login_method" });
       } else {
