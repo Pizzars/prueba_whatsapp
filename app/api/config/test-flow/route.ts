@@ -46,7 +46,6 @@ export async function POST() {
               flow_id: WHATSAPP_FLOW_ID,
               flow_cta: "Iniciar sesión",
               flow_action: "data_exchange",
-              mode: "draft",
             },
           },
         },
