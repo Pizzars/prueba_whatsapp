@@ -35,6 +35,7 @@ export default function MonitorPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [deletingChats, setDeletingChats] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [closeMessage, setCloseMessage] = useState("");
@@ -82,6 +83,28 @@ export default function MonitorPage() {
       setCloseMessage("❌ Error de conexión");
     } finally {
       setClosing(false);
+    }
+  }
+
+  async function handleDeleteChats() {
+    if (!confirm("¿Eliminar TODAS las conversaciones de WhatsApp? Esta acción no se puede deshacer.")) {
+      return;
+    }
+    setDeletingChats(true);
+    setCloseMessage("");
+    try {
+      const res = await fetch("/api/admin/delete-chats", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setCloseMessage(`✅ ${data.message}`);
+        refresh();
+      } else {
+        setCloseMessage(`❌ ${data.error}`);
+      }
+    } catch {
+      setCloseMessage("❌ Error de conexión");
+    } finally {
+      setDeletingChats(false);
     }
   }
 
@@ -142,6 +165,13 @@ export default function MonitorPage() {
               className="rounded-lg border border-red-700 bg-red-900/20 px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
             >
               {closing ? "Cerrando..." : "Cerrar todas"}
+            </button>
+            <button
+              onClick={handleDeleteChats}
+              disabled={deletingChats}
+              className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-900/50 disabled:opacity-50"
+            >
+              {deletingChats ? "Eliminando..." : "🗑️ Eliminar chats"}
             </button>
             <button
               onClick={refresh}

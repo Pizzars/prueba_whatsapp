@@ -228,6 +228,7 @@ type Mutation {
   createBet(input: CreateBet_prueba_whatsappInput!): Bet_prueba_whatsapp
   createConversation(input: CreateConversation_prueba_whatsappInput!): Conversation_prueba_whatsapp
   updateConversation(input: UpdateConversation_prueba_whatsappInput!): Conversation_prueba_whatsapp
+  deleteConversation(input: DeleteInput!): Conversation_prueba_whatsapp
   createConfig(input: CreateConfig_prueba_whatsappInput!): Config_prueba_whatsapp
   updateConfig(input: UpdateConfig_prueba_whatsappInput!): Config_prueba_whatsapp
 }

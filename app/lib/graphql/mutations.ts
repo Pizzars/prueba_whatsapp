@@ -108,6 +108,14 @@ export const updateConversation = /* GraphQL */ `
   }
 `;
 
+export const deleteConversation = /* GraphQL */ `
+  mutation DeleteConversation($input: DeleteInput!) {
+    deleteConversation(input: $input) {
+      id
+    }
+  }
+`;
+
 // Config
 export const createConfig = /* GraphQL */ `
   mutation CreateConfig($input: CreateConfig_prueba_whatsappInput!) {
