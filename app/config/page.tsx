@@ -33,9 +33,11 @@ export default function ConfigPage() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testingTemplate, setTestingTemplate] = useState(false);
+  const [registeringKey, setRegisteringKey] = useState(false);
   const [message, setMessage] = useState("");
   const [testResult, setTestResult] = useState("");
   const [templateResult, setTemplateResult] = useState("");
+  const [keyResult, setKeyResult] = useState("");
 
   // Cargar config actual
   useEffect(() => {
@@ -105,6 +107,24 @@ export default function ConfigPage() {
       setTemplateResult("❌ Error de conexión");
     } finally {
       setTestingTemplate(false);
+    }
+  }
+
+  async function handleRegisterKey() {
+    setRegisteringKey(true);
+    setKeyResult("");
+    try {
+      const res = await fetch("/api/config/register-key", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setKeyResult(`✅ Clave pública registrada correctamente`);
+      } else {
+        setKeyResult(`❌ Error: ${JSON.stringify(data.details || data.error)}`);
+      }
+    } catch {
+      setKeyResult("❌ Error de conexión");
+    } finally {
+      setRegisteringKey(false);
     }
   }
 
@@ -268,6 +288,20 @@ export default function ConfigPage() {
             className="mt-3 w-full rounded-lg border border-purple-600 bg-purple-600/10 px-4 py-3 font-semibold text-purple-400 transition-colors hover:bg-purple-600/20 disabled:opacity-50"
           >
             {testingTemplate ? "Enviando..." : `Enviar plantilla "prueba_webview" a ${config.testPhoneNumber || "..."}`}
+          </button>
+
+          {/* Registrar clave pública para Flows */}
+          {keyResult && (
+            <p className={`mb-2 mt-4 rounded-lg px-3 py-2 text-sm ${keyResult.startsWith("✅") ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"}`}>
+              {keyResult}
+            </p>
+          )}
+          <button
+            onClick={handleRegisterKey}
+            disabled={registeringKey}
+            className="mt-3 w-full rounded-lg border border-blue-600 bg-blue-600/10 px-4 py-3 font-semibold text-blue-400 transition-colors hover:bg-blue-600/20 disabled:opacity-50"
+          >
+            {registeringKey ? "Registrando..." : "Registrar clave pública (Flows)"}
           </button>
         </div>
 
