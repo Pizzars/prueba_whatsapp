@@ -87,9 +87,14 @@ export async function POST(request: Request) {
         break;
     }
 
-    handleIncomingMessage(phoneNumber, messagePayload).catch((err) => {
+    // Esperar el procesamiento antes de responder.
+    // En serverless (Lambda/Amplify), el "fire and forget" no funciona:
+    // el contenedor se congela al retornar, matando el proceso async.
+    try {
+      await handleIncomingMessage(phoneNumber, messagePayload);
+    } catch (err) {
       console.error("Error procesando mensaje WhatsApp:", err);
-    });
+    }
 
     return NextResponse.json({ status: "ok" });
   } catch (error) {
