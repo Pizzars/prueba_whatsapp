@@ -1,5 +1,6 @@
 import { sendText, sendLocationRequest, sendButtons } from "./sendMessage";
-import { WHATSAPP_FLOW_ID, WHATSAPP_TOKEN, WHATSAPP_API_URL } from "@/app/lib/constants";
+import { WHATSAPP_FLOW_ID } from "@/app/lib/constants";
+import { getWhatsAppConfig } from "@/app/lib/whatsapp-config";
 import { client } from "@/app/lib/amplify-server";
 import { listConversations } from "@/app/lib/graphql/queries";
 import {
@@ -46,10 +47,13 @@ interface Conversation {
 // --- Enviar flow de login ---
 
 async function sendLoginFlow(phoneNumber: string): Promise<void> {
-  await fetch(WHATSAPP_API_URL, {
+  const config = await getWhatsAppConfig();
+  const apiUrl = `https://graph.facebook.com/${config.whatsappApiVersion}/${config.whatsappPhoneNumberId}/messages`;
+
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      Authorization: `Bearer ${config.whatsappToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -75,6 +79,11 @@ async function sendLoginFlow(phoneNumber: string): Promise<void> {
       },
     }),
   });
+
+  if (!response.ok) {
+    const err = await response.text();
+    console.error("Error enviando flow de login:", err);
+  }
 }
 
 // --- Conversation state management ---
