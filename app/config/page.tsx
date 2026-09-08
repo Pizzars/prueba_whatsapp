@@ -34,10 +34,12 @@ export default function ConfigPage() {
   const [testing, setTesting] = useState(false);
   const [testingTemplate, setTestingTemplate] = useState(false);
   const [registeringKey, setRegisteringKey] = useState(false);
+  const [testingFlow, setTestingFlow] = useState(false);
   const [message, setMessage] = useState("");
   const [testResult, setTestResult] = useState("");
   const [templateResult, setTemplateResult] = useState("");
   const [keyResult, setKeyResult] = useState("");
+  const [flowResult, setFlowResult] = useState("");
 
   // Cargar config actual
   useEffect(() => {
@@ -125,6 +127,24 @@ export default function ConfigPage() {
       setKeyResult("❌ Error de conexión");
     } finally {
       setRegisteringKey(false);
+    }
+  }
+
+  async function handleTestFlow() {
+    setTestingFlow(true);
+    setFlowResult("");
+    try {
+      const res = await fetch("/api/config/test-flow", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setFlowResult(`✅ Flow enviado a ${data.sentTo} (ID: ${data.messageId})`);
+      } else {
+        setFlowResult(`❌ Error: ${JSON.stringify(data.details || data.error)}`);
+      }
+    } catch {
+      setFlowResult("❌ Error de conexión");
+    } finally {
+      setTestingFlow(false);
     }
   }
 
@@ -302,6 +322,20 @@ export default function ConfigPage() {
             className="mt-3 w-full rounded-lg border border-blue-600 bg-blue-600/10 px-4 py-3 font-semibold text-blue-400 transition-colors hover:bg-blue-600/20 disabled:opacity-50"
           >
             {registeringKey ? "Registrando..." : "Registrar clave pública (Flows)"}
+          </button>
+
+          {/* Prueba de flow login_test */}
+          {flowResult && (
+            <p className={`mb-2 mt-4 rounded-lg px-3 py-2 text-sm ${flowResult.startsWith("✅") ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"}`}>
+              {flowResult}
+            </p>
+          )}
+          <button
+            onClick={handleTestFlow}
+            disabled={testingFlow || !config.testPhoneNumber}
+            className="mt-3 w-full rounded-lg border border-pink-600 bg-pink-600/10 px-4 py-3 font-semibold text-pink-400 transition-colors hover:bg-pink-600/20 disabled:opacity-50"
+          >
+            {testingFlow ? "Enviando..." : `Enviar flow "login_test" a ${config.testPhoneNumber || "..."}`}
           </button>
         </div>
 

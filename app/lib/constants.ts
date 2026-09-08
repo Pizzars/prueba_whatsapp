@@ -20,7 +20,8 @@ export const WHATSAPP_API_URL = `https://graph.facebook.com/${WHATSAPP_API_VERSI
 export const APP_URL = "https://main.d1bz5bsylv88le.amplifyapp.com";
 
 // --- WhatsApp Flow ---
-export const WHATSAPP_FLOW_ID = "1557723995248929";
+export const WHATSAPP_FLOW_ID = "3884931724983161";
+export const WHATSAPP_FLOW_NAME = "login_test";
 export const WHATSAPP_FLOW_MODE = "draft"; // cambiar a "published" cuando se publique
 
 // --- Gemini AI ---
