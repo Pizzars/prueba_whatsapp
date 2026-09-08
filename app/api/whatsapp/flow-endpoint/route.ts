@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { validateCredentials } from "@/app/lib/users";
+import { createNewSession, associatePhoneNumber } from "@/app/lib/sessions";
+import { client } from "@/app/lib/amplify-server";
+import { listConversations } from "@/app/lib/graphql/queries";
+import { createConversation, updateConversation } from "@/app/lib/graphql/mutations";
+import { sendText } from "@/app/lib/whatsapp/sendMessage";
 import crypto from "crypto";
 
 // Clave privada para desencriptar peticiones de WhatsApp Flows
@@ -99,7 +104,7 @@ export async function POST(request: Request) {
     // Si viene encriptado (producción)
     if (body.encrypted_flow_data) {
       const { decryptedBody, aesKey, iv } = decryptRequest(body);
-      const response = processFlowRequest(decryptedBody);
+      const response = await processFlowRequest(decryptedBody);
       const encryptedResponse = encryptResponse(response, aesKey, iv);
 
       return new Response(encryptedResponse, {
@@ -109,7 +114,7 @@ export async function POST(request: Request) {
     }
 
     // Si viene sin encriptar (modo draft/testing o pruebas locales)
-    const response = processFlowRequest(body);
+    const response = await processFlowRequest(body);
     return NextResponse.json(response);
   } catch (error) {
     console.error("Error en flow endpoint:", error);
@@ -121,9 +126,64 @@ export async function POST(request: Request) {
 }
 
 /**
+ * Extrae el número de teléfono del flow_token.
+ * Formato del token: login_{phoneNumber}_{timestamp}
+ */
+function extractPhoneFromToken(flowToken?: string): string | null {
+  if (!flowToken) return null;
+  const parts = flowToken.split("_");
+  if (parts.length >= 2 && parts[0] === "login") {
+    return parts[1];
+  }
+  return null;
+}
+
+/**
+ * Crea la sesión, la asocia al número de WhatsApp, actualiza la conversación
+ * y envía el menú de bienvenida al usuario.
+ */
+async function completarLogin(phoneNumber: string, documento: string, nombre: string) {
+  // Crear sesión
+  const session = await createNewSession({
+    documento,
+    nombre,
+    latitude: 0,
+    longitude: 0,
+  });
+
+  // Asociar el número
+  await associatePhoneNumber(session.sessionId, phoneNumber);
+
+  // Buscar/crear conversación y ponerla en estado idle
+  const result = await client.graphql({ query: listConversations, variables: { limit: 50 } });
+  const convs = (result as { data: { listConversations: { items: { id: string; phoneNumber: string }[] } } })
+    .data.listConversations.items;
+  const conv = convs.find((c) => c.phoneNumber === phoneNumber);
+
+  const now = new Date().toISOString();
+  if (conv) {
+    await client.graphql({
+      query: updateConversation,
+      variables: { input: { id: conv.id, state: "idle", sessionId: session.sessionId, selectedDraw: null, updatedAt: now } },
+    });
+  } else {
+    await client.graphql({
+      query: createConversation,
+      variables: { input: { phoneNumber, state: "idle", sessionId: session.sessionId, updatedAt: now } },
+    });
+  }
+
+  // Enviar bienvenida
+  await sendText(
+    phoneNumber,
+    `✅ ¡Bienvenido, ${nombre}! Tu sesión está activa. 🎰\n\nAhora puedo ayudarte con tus apuestas. ¿Qué deseas hacer?`
+  );
+}
+
+/**
  * Procesar la petición del Flow (ya desencriptada)
  */
-function processFlowRequest(body: { action: string; screen?: string; data?: Record<string, string>; flow_token?: string }) {
+async function processFlowRequest(body: { action: string; screen?: string; data?: Record<string, string>; flow_token?: string }) {
   // Health check
   if (body.action === "ping") {
     return { version: "3.0", data: { status: "active" } };
@@ -156,7 +216,16 @@ function processFlowRequest(body: { action: string; screen?: string; data?: Reco
       };
     }
 
-    // Login exitoso
+    // Login exitoso — crear sesión y activar el chat
+    const phoneNumber = extractPhoneFromToken(body.flow_token);
+    if (phoneNumber) {
+      try {
+        await completarLogin(phoneNumber, user.documento, user.nombre);
+      } catch (err) {
+        console.error("Error completando login desde flow:", err);
+      }
+    }
+
     return {
       version: "3.0",
       screen: "SUCCESS",

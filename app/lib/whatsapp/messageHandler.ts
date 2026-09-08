@@ -1,4 +1,5 @@
-import { sendText, sendLocationRequest, sendButtons, sendTemplate } from "./sendMessage";
+import { sendText, sendLocationRequest, sendButtons } from "./sendMessage";
+import { WHATSAPP_FLOW_ID, WHATSAPP_TOKEN, WHATSAPP_API_URL } from "@/app/lib/constants";
 import { client } from "@/app/lib/amplify-server";
 import { listConversations } from "@/app/lib/graphql/queries";
 import {
@@ -40,6 +41,40 @@ interface Conversation {
   betAmount: number | null;
   currentPage: number | null;
   updatedAt: string | null;
+}
+
+// --- Enviar flow de login ---
+
+async function sendLoginFlow(phoneNumber: string): Promise<void> {
+  await fetch(WHATSAPP_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: phoneNumber,
+      type: "interactive",
+      interactive: {
+        type: "flow",
+        header: { type: "text", text: "Iniciar sesión" },
+        body: { text: "Ingresa tus credenciales para acceder a la Plataforma de Apuestas." },
+        footer: { text: "Plataforma de Apuestas" },
+        action: {
+          name: "flow",
+          parameters: {
+            flow_message_version: "3",
+            flow_id: WHATSAPP_FLOW_ID,
+            flow_cta: "Iniciar sesión",
+            flow_action: "data_exchange",
+            flow_token: `login_${phoneNumber}_${Date.now()}`,
+          },
+        },
+      },
+    }),
+  });
 }
 
 // --- Conversation state management ---
@@ -122,7 +157,8 @@ export async function handleIncomingMessage(
 
     // --- Flujo sin sesión: login rígido (sin IA) ---
     if (state === "new" || state === "choosing_login_method" || state === "awaiting_location" ||
-        state === "awaiting_login" || state === "awaiting_documento" || state === "awaiting_password") {
+        state === "awaiting_login" || state === "awaiting_documento" || state === "awaiting_password" ||
+        state === "awaiting_flow_login") {
       await handleLoginFlow(phoneNumber, conversation, state, payload, text, interactiveId);
       return;
     }
@@ -172,8 +208,7 @@ async function handleLoginFlow(
         "¡Hola! 👋 Bienvenido a la Plataforma de Apuestas.\n\n¿Cómo deseas iniciar sesión?",
         [
           { id: "login_web", title: "Ingresar con URL" },
-          { id: "login_whatsapp", title: "Usuario y contraseña" },
-          { id: "probar_webview", title: "Probar webview" },
+          { id: "login_flow", title: "Formulario en el chat" },
         ]
       );
       await createOrUpdateConversation(conversation, phoneNumber, { state: "choosing_login_method" });
@@ -188,19 +223,34 @@ async function handleLoginFlow(
           phoneNumber,
           `🔗 Abre este enlace para iniciar sesión:\n\n${loginUrl}\n\nDespués de iniciar sesión, vuelve aquí y envía cualquier mensaje.`
         );
-      } else if (interactiveId === "login_whatsapp" || text === "2") {
-        await sendLocationRequest(phoneNumber, "📍 Primero necesito tu ubicación. Compártela usando el botón:");
-        await createOrUpdateConversation(conversation, phoneNumber, { state: "awaiting_location" });
-      } else if (interactiveId === "probar_webview" || text === "3") {
-        // Enviar la plantilla prueba_webview
-        await sendTemplate(phoneNumber, "prueba_webview", "es_CO");
-        // Mantener en el mismo estado para que pueda elegir otra opción luego
+      } else if (interactiveId === "login_flow" || text === "2") {
+        // Enviar el flow de login (formulario nativo de WhatsApp)
+        await sendLoginFlow(phoneNumber);
+        // El flow-endpoint crea la sesión y envía la bienvenida al completarse.
+        // Dejamos la conversación esperando login.
+        await createOrUpdateConversation(conversation, phoneNumber, { state: "awaiting_flow_login" });
       } else {
         await sendButtons(phoneNumber, "Por favor elige una opción:", [
           { id: "login_web", title: "Ingresar con URL" },
-          { id: "login_whatsapp", title: "Usuario y contraseña" },
-          { id: "probar_webview", title: "Probar webview" },
+          { id: "login_flow", title: "Formulario en el chat" },
         ]);
+      }
+      break;
+
+    case "awaiting_flow_login":
+      // El usuario está completando el flow. Si escribe algo, verificar si ya tiene sesión.
+      if (conversation?.sessionId) {
+        const session = await getSessionBySessionId(conversation.sessionId);
+        if (session && session.active) {
+          await createOrUpdateConversation(conversation, phoneNumber, { state: "idle" });
+          await sendText(phoneNumber, `Ya tienes sesión activa, ${session.nombre}. ¿Qué deseas hacer?`);
+          return;
+        }
+      }
+      await sendText(phoneNumber, "⏳ Completa el formulario de login que te envié. Si no lo ves, escribe *nuevo* para reiniciar.");
+      if (text.toLowerCase() === "nuevo") {
+        await createOrUpdateConversation(conversation, phoneNumber, { state: "new" });
+        await handleLoginFlow(phoneNumber, conversation, "new", payload, text, interactiveId);
       }
       break;
 
