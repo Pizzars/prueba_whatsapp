@@ -80,6 +80,48 @@ export async function sendButtons(
 }
 
 /**
+ * Enviar mensaje interactivo con un botón CTA de URL (abre un enlace).
+ * Soporta encabezado (title), cuerpo y el botón que abre la URL.
+ */
+export async function sendCtaUrl(
+  phoneNumber: string,
+  options: {
+    header?: string;
+    body: string;
+    footer?: string;
+    buttonText: string;
+    url: string;
+  }
+) {
+  const interactive: Record<string, unknown> = {
+    type: "cta_url",
+    body: { text: options.body },
+    action: {
+      name: "cta_url",
+      parameters: {
+        display_text: options.buttonText,
+        url: options.url,
+      },
+    },
+  };
+
+  if (options.header) {
+    interactive.header = { type: "text", text: options.header };
+  }
+  if (options.footer) {
+    interactive.footer = { text: options.footer };
+  }
+
+  return sendRequest({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: phoneNumber,
+    type: "interactive",
+    interactive,
+  });
+}
+
+/**
  * Enviar mensaje interactivo con lista de opciones
  */
 export async function sendList(

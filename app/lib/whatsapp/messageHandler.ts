@@ -1,4 +1,4 @@
-import { sendText, sendLocationRequest, sendButtons } from "./sendMessage";
+import { sendText, sendLocationRequest, sendButtons, sendCtaUrl } from "./sendMessage";
 import { WHATSAPP_FLOW_ID } from "@/app/lib/constants";
 import { getWhatsAppConfig } from "@/app/lib/whatsapp-config";
 import { client } from "@/app/lib/amplify-server";
@@ -130,9 +130,68 @@ function serializeHistory(history: ChatMessage[]): string {
   return JSON.stringify(history.slice(-20));
 }
 
-// --- Main handler ---
+// --- Menú principal (nuevo flujo) ---
+
+const MENU_OPTIONS = [
+  { id: "menu_ventas", title: "Ventas" },
+  { id: "menu_servicio", title: "Servicio al cliente" },
+  { id: "menu_resultados", title: "Resultados" },
+];
+
+const MENU_BODY = "¡Hola! 👋 Bienvenido a Paga Todo.\n\n¿En qué te podemos ayudar hoy?";
+
+async function sendMainMenu(phoneNumber: string): Promise<void> {
+  await sendButtons(phoneNumber, MENU_BODY, MENU_OPTIONS);
+}
+
+// --- Main handler (nuevo: menú simple) ---
 
 export async function handleIncomingMessage(
+  phoneNumber: string,
+  payload: MessagePayload
+): Promise<void> {
+  try {
+    const interactiveId = payload.type === "interactive" ? payload.interactive?.id || "" : "";
+
+    switch (interactiveId) {
+      case "menu_ventas":
+        await sendCtaUrl(phoneNumber, {
+          header: "Bienvenido a Paga Todo",
+          body:
+            "Ingresa a nuestra sucursal virtual para consultar tu saldo, recargar tus servicios y jugar tus productos favoritos de forma rápida y segura sin salir de WhatsApp.\n\nToca el botón a continuación para iniciar sesión.",
+          buttonText: "Ir a la sucursal web",
+          url: "https://sucursal.pagatodo.com.co/",
+        });
+        return;
+
+      case "menu_servicio":
+      case "menu_resultados":
+        await sendText(
+          phoneNumber,
+          "🙏 Esta opción no está disponible por el momento."
+        );
+        await sendMainMenu(phoneNumber);
+        return;
+
+      default:
+        // Cualquier otro mensaje (saludo, texto libre, etc.) → mostrar el menú
+        await sendMainMenu(phoneNumber);
+        return;
+    }
+  } catch (error) {
+    console.error("Error en messageHandler:", error);
+    await sendText(phoneNumber, "😅 Tuve un problema procesando tu mensaje. ¿Podrías intentar de nuevo?");
+  }
+}
+
+// ============================================================================
+// FLUJO ANTERIOR (login + apuestas + IA). DESCARTADO por el momento — se
+// conserva el código pero ya no se invoca desde handleIncomingMessage.
+// Para reactivarlo, restaurar la lógica anterior en handleIncomingMessage.
+// ============================================================================
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function handleIncomingMessageLegacy(
   phoneNumber: string,
   payload: MessagePayload
 ): Promise<void> {
