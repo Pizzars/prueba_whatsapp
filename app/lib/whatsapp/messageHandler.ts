@@ -159,7 +159,7 @@ export async function handleIncomingMessage(
           header: "Bienvenido a Paga Todo",
           body:
             "Ingresa a nuestra sucursal virtual para consultar tu saldo, recargar tus servicios y jugar tus productos favoritos de forma rápida y segura sin salir de WhatsApp.\n\nToca el botón a continuación para iniciar sesión.",
-          buttonText: "Ir a la sucursal web",
+          buttonText: "Ir a comprar",
           url: "https://sucursal.pagatodo.com.co/",
         });
         return;
