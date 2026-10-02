@@ -135,8 +135,16 @@ function serializeHistory(history: ChatMessage[]): string {
 const MENU_OPTIONS = [
   { id: "menu_ventas", title: "Ventas" },
   { id: "menu_servicio", title: "Servicio al cliente" },
-  { id: "menu_resultados", title: "Resultados" },
 ];
+
+const SOPORTE_MESSAGE =
+  "Para nosotros es importante poder ayudarte. Estamos desarrollando un acceso directo para brindarte una mejor atención. Mientras tanto, compartimos nuestros canales de contacto para que puedas comunicarte con nosotros y gestionar tu consulta:\n\n" +
+  "📧 *Servicio al Cliente:* servicio.alcliente@gelsa.com.co\n" +
+  "📧 *Soporte Digital:* soporte.digital@gelsa.com.co\n" +
+  "📧 *Tratamiento de Datos:* tratamiento.datos@gelsa.com.co\n" +
+  "🌐 *Web:* Atención al cliente - Paga Todo\n" +
+  "📞 *Línea telefónica:* 601-3788890\n\n" +
+  "¡Mucha suerte!";
 
 const MENU_BODY = "¡Hola! 👋 Bienvenido a Paga Todo.\n\n¿En qué te podemos ayudar hoy?";
 
@@ -165,12 +173,7 @@ export async function handleIncomingMessage(
         return;
 
       case "menu_servicio":
-      case "menu_resultados":
-        await sendText(
-          phoneNumber,
-          "🙏 Esta opción no está disponible por el momento."
-        );
-        await sendMainMenu(phoneNumber);
+        await sendText(phoneNumber, SOPORTE_MESSAGE);
         return;
 
       default:
