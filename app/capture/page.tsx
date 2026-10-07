@@ -75,7 +75,8 @@ export default function CapturePage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-6">
+    <main className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-100">
+      <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-white">
@@ -221,6 +222,7 @@ export default function CapturePage() {
           )}
         </div>
       )}
+      </div>
     </main>
   );
 }
