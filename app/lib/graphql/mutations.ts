@@ -146,3 +146,21 @@ export const updateConfig = /* GraphQL */ `
     }
   }
 `;
+
+// WebhookCapture (diagnóstico de firma de Meta)
+export const createWebhookCapture = /* GraphQL */ `
+  mutation CreateWebhookCapture($input: CreateWebhookCapture_prueba_whatsappInput!) {
+    createWebhookCapture(input: $input) {
+      id
+      method
+      receivedAt
+      signature
+      expectedSignature
+      signatureValid
+      signatureNote
+      headers
+      rawBody
+      queryString
+    }
+  }
+`;

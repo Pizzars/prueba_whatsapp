@@ -13,6 +13,10 @@ export const AWS_REGION = "us-east-1";
 export const WHATSAPP_TOKEN = "EAAM0RYkxZBZAABSYAMhQeQlu7mwmnqSFUfelMvCNRjTxV2aTOZAH7cCQ0hpwEVVohncwUoh2KdaHgZCYmdZBgpH1VZCttt8nx6sONZASDW3rpPsOZCUVtns9aRwzWxe2bZBlbBDYZA3iMLKuty2YKKGgHHGA0lF667unZCRkSQ6Fo1uUb0im68VoGqco3Do5Rjc8lO6rwZDZD";
 export const WHATSAPP_PHONE_NUMBER_ID = "1266826483177939";
 export const WHATSAPP_VERIFY_TOKEN = "prueba_whatsapp_verify_2024";
+// App Secret de Meta: firma cada POST del webhook (HMAC-SHA256). Se toma de variable de entorno;
+// el fallback es solo para el diagnóstico de firma. ROTAR en Meta tras las pruebas.
+export const WHATSAPP_APP_SECRET =
+  process.env.WHATSAPP_APP_SECRET || "2f6645d1f2a58f31d60f31dd13976396";
 export const WHATSAPP_API_VERSION = "v25.0";
 export const WHATSAPP_API_URL = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
 

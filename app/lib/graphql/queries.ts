@@ -155,3 +155,24 @@ export const getConfig = /* GraphQL */ `
     }
   }
 `;
+
+// WebhookCapture (diagnóstico de firma de Meta)
+export const listWebhookCaptures = /* GraphQL */ `
+  query ListWebhookCaptures($limit: Int, $nextToken: String) {
+    listWebhookCaptures(limit: $limit, nextToken: $nextToken) {
+      items {
+        id
+        method
+        receivedAt
+        signature
+        expectedSignature
+        signatureValid
+        signatureNote
+        headers
+        rawBody
+        queryString
+      }
+      nextToken
+    }
+  }
+`;

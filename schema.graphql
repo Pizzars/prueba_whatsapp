@@ -186,6 +186,39 @@ type Config_prueba_whatsapp {
   updatedAt: AWSDateTime
 }
 
+# Captura cruda de las peticiones del webhook de Meta (diagnóstico de firma).
+# Guarda la petición TAL CUAL llega y el resultado de verificar la firma HMAC.
+type WebhookCapture_prueba_whatsapp {
+  id: ID!
+  method: String!
+  receivedAt: AWSDateTime!
+  signature: String          # firma que mandó Meta en X-Hub-Signature-256
+  expectedSignature: String  # firma que calculamos nosotros con el App Secret
+  signatureValid: Boolean    # true si coinciden (petición auténtica)
+  signatureNote: String      # explicación legible de la verificación
+  headers: AWSJSON!
+  rawBody: String!
+  queryString: String
+}
+
+input CreateWebhookCapture_prueba_whatsappInput {
+  id: ID
+  method: String!
+  receivedAt: AWSDateTime!
+  signature: String
+  expectedSignature: String
+  signatureValid: Boolean
+  signatureNote: String
+  headers: AWSJSON!
+  rawBody: String!
+  queryString: String
+}
+
+type WebhookCaptureConnection {
+  items: [WebhookCapture_prueba_whatsapp]
+  nextToken: String
+}
+
 input CreateConfig_prueba_whatsappInput {
   id: ID!
   whatsappToken: String!
@@ -218,6 +251,7 @@ type Query {
   getConversation(id: ID!): Conversation_prueba_whatsapp
   listConversations(filter: TableConversationFilterInput, limit: Int, nextToken: String): ConversationConnection
   getConfig(id: ID!): Config_prueba_whatsapp
+  listWebhookCaptures(limit: Int, nextToken: String): WebhookCaptureConnection
 }
 
 type Mutation {
@@ -231,6 +265,7 @@ type Mutation {
   deleteConversation(input: DeleteInput!): Conversation_prueba_whatsapp
   createConfig(input: CreateConfig_prueba_whatsappInput!): Config_prueba_whatsapp
   updateConfig(input: UpdateConfig_prueba_whatsappInput!): Config_prueba_whatsapp
+  createWebhookCapture(input: CreateWebhookCapture_prueba_whatsappInput!): WebhookCapture_prueba_whatsapp
 }
 
 type Subscription {
